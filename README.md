@@ -15,7 +15,7 @@ Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and keep b
 | Sky seen through glass/water was untinted: cause found | **Confirmed in game** (turning the distance fade off made the tint appear) |
 | Sky fade patch (keeps the fade, stops it overwriting tinted sky) | Installed, not yet confirmed with the fade on |
 | Light through glass/water absorbed by distance travelled (shadow rays) | Installed. In game the light came out tinted but a bit dim through red glass, hence the `--k` knob |
-| Glass touching an opaque block gets a real exit face | Installed, **untested in game** |
+| Glass touching an opaque block gets a real exit face | **Confirmed in game** |
 | Water top face emitted once instead of twice | Installed, untested on its own |
 | Skylight bounces refract and absorb by depth (`user.conf` setting) | Installed, costs some FPS |
 
