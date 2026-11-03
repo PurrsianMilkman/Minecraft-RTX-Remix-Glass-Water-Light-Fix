@@ -1,0 +1,4 @@
+Patch scripts for NVIDIA's "RTX Remix for Minecraft" (Apache-2.0, https://github.com/NVIDIAGameWorks/rtx-remix-minecraft).
+This repository is not affiliated with or endorsed by NVIDIA, Mojang or Microsoft. It contains no NVIDIA binaries, shaders or
+game assets. GlassContactFaces.java and HookEmitter.java are written to be applied to that mod's BlockQuadEmitter class and are
+offered under the same Apache-2.0 licence so they can be contributed upstream.

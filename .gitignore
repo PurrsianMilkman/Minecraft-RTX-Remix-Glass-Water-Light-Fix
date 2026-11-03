@@ -1,0 +1,11 @@
+# Never commit vendor binaries, dumps or local test output
+*.dll
+*.jar
+*.class
+*.spv
+*.dis
+*.dxvk-cache
+*.dmp
+*.png
+__pycache__/
+work/
