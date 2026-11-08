@@ -1,3 +1,5 @@
-# Add or change this line in <profile>/user.conf (the game must be closed).
-# Bounce rays refract and use exact depth-based absorption (costs some FPS).
-rtx.enableTransmissionApproximationInIndirectRays = False
+# No user.conf change is needed any more.
+# The companion mod keeps rtx.enableTransmissionApproximationInIndirectRays at its shipped True and writes
+# rtx.viewDistance.noiseScale and rtx.viewDistance.distanceFadeMin itself at runtime.
+# Do NOT put those two keys (or an old rtx.enableTransmissionApproximationInIndirectRays = False line from an earlier
+# version of this repository) into <profile>/user.conf: a value there outranks the mod's live writes.

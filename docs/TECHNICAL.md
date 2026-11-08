@@ -78,3 +78,27 @@ the fade end. The fade then lerps to untinted sky at 100%. The patch makes the g
 * Water over an opaque block lacks the bottom face as well. The same helper idea applies to the fluid emitter.
 * Everything here should be an upstream change: a runtime change to absorb by travelled distance for thick translucents on shadow rays, a fix for the fade on
   replaced pixels, and a mod change to keep contact faces and emit one water top quad.
+
+## Later additions (2026-11)
+
+* **Live channels.** The patched shaders read `RaytraceArgs.viewDistanceArgs`: `noiseScale` (shipped 20) is the on/off flag (`> 20.0005`) and carries the
+  saturation (`20.001 + 0.0001 * percent`), `distanceFadeMin` (shipped 358.4) carries the pane depth (`358.4 + 0.00001 * percent`). A value in
+  `user.conf` outranks runtime writes, so keep both keys out of it. The companion mod re-reads both once a second and rewrites them on drift.
+* **Brightness lift is saturation weighted.** `scale = 1 + (CLEAR / max - 1) * (1 - min / max)` in `shadow_ray_patch.py` and `bounce_tint_patch.py`.
+  The unweighted version (`scale = max(CLEAR / max, 1)`) turned black glass (linear 0.0097) into 0.9 per 0.35 m, i.e. almost clear.
+* **Primary-ray miss branch** (`gbuf_patch.py`): a ray that hits nothing is treated as inside an infinite medium, so any absorbing medium gives black.
+  Black sky behind glass or water means the ray still believes it is inside a medium (missing or coplanar faces), not that the sky is dark.
+  `--miss-probe` draws that case pink (glass) or green (water) for diagnosis.
+* **Coplanar faces.** Vanilla culls only the face between blocks of the same kind. Different glass colours (and glass against water) emit two faces
+  on one plane; the hit order is then arbitrary per ray, which breaks medium tracking. `GlassContactFaces.lift` also pulls a glass face that touches
+  another glass-like block 4 mm inward (`separateGlass`), leaving an 8 mm hairline of air between the two.
+* **Material constants.** `HookMeasure.java` patches the two `ldc 0.35f` glass measurement distances and the water blue transmittance in
+  `BlockTextureManager`; those materials are built once per resource load, so these settings apply after a reload or restart.
+* **Sun size.** `LightManager.updateDistantLight` receives the sun (0.53 deg) and moon (0.52 deg) diameters as a parameter; `HookLight.java`
+  scales them. The real sun gives a penumbra of about 1 cm per metre, which looks razor sharp at block scale.
+* **Settings UI.** `KeyBindButton` extends `ButtonWidget` and uses the game's own `KeyBinding` objects (click, press a key); `patch_jar.py` copies each helper
+  class as exactly one class file, so helper classes must not have nested classes or enums (lambdas are fine).
+* **Building shaders without `spirv-val`.** `build_runtime.py` runs without it and only checks a disassembly round trip; a type or logic error would not be
+  caught. Prefer a full SPIRV-Tools set.
+* **Unexplained.** A violet/blue cast in skylit shade and under glass also appears with all of these mods off, so it is stock Remix behaviour.
+  Measured on one screenshot, a white floor had r/g 1.17-1.24 and b/g 1.08-1.22 even in direct sun (green suppressed everywhere).

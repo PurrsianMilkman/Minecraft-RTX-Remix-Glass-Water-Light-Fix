@@ -31,6 +31,56 @@ public class HookEmitter {
                         hooks++;
                     }
                 }
+            } else if (m.name.equals("emitFluidQuads")) {
+                // setPos4, setUv4, writeFluidQuad, setPos4, writeFluidQuad: the last call is the reversed duplicate
+                java.util.List<MethodInsnNode> calls = new java.util.ArrayList<>();
+                for (AbstractInsnNode n : m.instructions.toArray())
+                    if (n instanceof MethodInsnNode mi) calls.add(mi);
+                MethodInsnNode hit = null;
+                for (int i = 0; i + 4 < calls.size(); i++) {
+                    if (calls.get(i).name.equals("setPos4") && calls.get(i + 1).name.equals("setUv4")
+                            && calls.get(i + 2).name.equals("writeFluidQuad") && calls.get(i + 3).name.equals("setPos4")
+                            && calls.get(i + 4).name.equals("writeFluidQuad")) {
+                        if (hit != null) throw new IllegalStateException("fluid quad pattern found twice");
+                        hit = calls.get(i + 4);
+                    }
+                }
+                if (hit == null) throw new IllegalStateException("fluid quad pattern not found");
+                m.instructions.set(hit, new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "fluidQuadReversed",
+                        "(L" + hit.owner + ";" + hit.desc.substring(1), false));
+                hooks++;
+                // water faces that touch glass: pull them a hair off the glass (GlassContactFaces.nudgeWater).
+                // The writeFluidQuad calls of the method in order are 6 top faces (the reversed copy is now a helper
+                // call), then bottom water, bottom lava, side water, side lava: the water bottom and side calls are
+                // the 4th and 2nd from the end.
+                java.util.List<MethodInsnNode> wq = new java.util.ArrayList<>();
+                for (AbstractInsnNode n : m.instructions.toArray())
+                    if (n instanceof MethodInsnNode mi && mi.name.equals("writeFluidQuad")) wq.add(mi);
+                if (wq.size() != 9) throw new IllegalStateException("expected 9 writeFluidQuad calls left, found " + wq.size());
+                MethodInsnNode bottomWater = wq.get(wq.size() - 4), sideWater = wq.get(wq.size() - 2);
+                m.instructions.set(bottomWater, new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "fluidQuadBottom",
+                        "(L" + bottomWater.owner + ";" + bottomWater.desc.substring(1), false));
+                m.instructions.set(sideWater, new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "fluidQuadSide",
+                        "(L" + sideWater.owner + ";" + sideWater.desc.substring(1), false));
+                // entry: GlassContactFaces.enterFluid(world, baseX + lx, baseY + ly, baseZ + lz)
+                InsnList enter = new InsnList();
+                enter.add(new VarInsnNode(Opcodes.ALOAD, 1));
+                enter.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                enter.add(new FieldInsnNode(Opcodes.GETFIELD, EMITTER, "baseX", "I"));
+                enter.add(new VarInsnNode(Opcodes.ILOAD, 3));
+                enter.add(new InsnNode(Opcodes.IADD));
+                enter.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                enter.add(new FieldInsnNode(Opcodes.GETFIELD, EMITTER, "baseY", "I"));
+                enter.add(new VarInsnNode(Opcodes.ILOAD, 4));
+                enter.add(new InsnNode(Opcodes.IADD));
+                enter.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                enter.add(new FieldInsnNode(Opcodes.GETFIELD, EMITTER, "baseZ", "I"));
+                enter.add(new VarInsnNode(Opcodes.ILOAD, 5));
+                enter.add(new InsnNode(Opcodes.IADD));
+                enter.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "enterFluid",
+                        "(L" + WORLD + ";III)V", false));
+                m.instructions.insert(enter);
+                hooks += 3;
             } else if (m.name.equals("stageBakedQuad")) {
                 // insert before "aload vd; bipush 7; iaload" (int packedNormal = vd[7])
                 AbstractInsnNode target = null;
@@ -83,8 +133,8 @@ public class HookEmitter {
                 hooks++;
             }
         }
-        System.out.println("hooks inserted: " + hooks + " (expect 4: 2 returns + stageBakedQuad + frapi)");
-        if (hooks != 4) System.exit(2);
+        System.out.println("hooks inserted: " + hooks + " (expect 8: 2 returns + stageBakedQuad + frapi + water top + 3 water-nudge)");
+        if (hooks != 8) System.exit(2);
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         cn.accept(cw);
         Files.write(Paths.get(a[1]), cw.toByteArray());

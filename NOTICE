@@ -2,3 +2,5 @@ Patch scripts for NVIDIA's "RTX Remix for Minecraft" (Apache-2.0, https://github
 This repository is not affiliated with or endorsed by NVIDIA, Mojang or Microsoft. It contains no NVIDIA binaries, shaders or
 game assets. GlassContactFaces.java and HookEmitter.java are written to be applied to that mod's BlockQuadEmitter class and are
 offered under the same Apache-2.0 licence so they can be contributed upstream.
+mod-patch/settings/SettingCategory.java and SettingGroup.java are copies of that mod's two enums (Apache-2.0, NVIDIA SPDX header kept)
+with one added constant each for the "Light Transform Modifications" page; the other files under mod-patch/settings are ours.

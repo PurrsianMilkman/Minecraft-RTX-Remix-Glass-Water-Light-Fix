@@ -27,6 +27,9 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PATCHER = os.path.join(HERE, 'shadow_ray_patch.py')
+BOUNCE_PATCHER = os.path.join(HERE, 'bounce_tint_patch.py')
+MASK_TEST_PATCHER = os.path.join(HERE, 'mask_test_patch.py')
+GBUF_PATCHER = os.path.join(HERE, 'gbuf_patch.py')
 
 SUPPORTED_MD5 = 'cbe2d49f543b608a7ac45d6b2c6631ae'   # remix-main+71a581da, 309,009,920 bytes
 COMPOSITE_OFFSET = 0x12430950                         # composite compute shader inside that build
@@ -73,7 +76,14 @@ class Tools:
                 if p and os.path.isfile(p):
                     return p
             sys.exit(f'{name} not found (use --spirv-tools)')
-        self.dis, self.asm, self.val = exe('spirv-dis'), exe('spirv-as'), exe('spirv-val')
+        self.dis, self.asm = exe('spirv-dis'), exe('spirv-as')
+        # spirv-val is optional (RenderDoc ships spirv-as/dis but not spirv-val): without it the module is only checked by a
+        # disassembly round trip, which catches malformed binaries but NOT type or logic errors
+        try:
+            self.val = exe('spirv-val')
+        except SystemExit:
+            self.val = None
+            print('WARNING: spirv-val not found, modules are NOT validated (round-trip check only)')
 
 
 def run(args):
@@ -105,11 +115,20 @@ def fit_and_validate(tools, text_lines, size, path):
         new = assemble(tools, '\n'.join(text), path)
     if new != size:
         raise RuntimeError(f'size mismatch {new} != {size}')
-    run([tools.val, '--target-env', 'vulkan1.2', '--scalar-block-layout', path])
+    if tools.val:
+        run([tools.val, '--target-env', 'vulkan1.2', '--scalar-block-layout', path])
+    else:
+        run([tools.dis, '--no-header', path, '-o', path + '.rt.dis'])
     return open(path, 'rb').read()
 
 
-def patch_shadow_module(tools, work, mod, blob, k, telltale):
+NEE_PASS_OFFSETS = (0x11e4cf60, 0x11ea2470)   # 'integrate_nee' modules of the supported build
+MISS_PROBE = False   # set by --miss-probe: DIAGNOSTIC colours for the primary-ray miss branch (needs --pane-depth)
+PANE_DEPTH = False   # set by --pane-depth: thin glass seen directly absorbs as if K*d thick, K live from distanceFadeMin
+SAT_SLIDER = False   # set by --sat-slider: glass colour saturation read live from noiseScale = 20.001 + 0.01 * saturation
+
+
+def patch_shadow_module(tools, work, mod, blob, k, telltale, glass_clear, live, bounce_clear=0.0, mask_test=False, nee_marker=False, cache_marker=False):
     off = mod['off']
     base = os.path.join(work, f'm_{off:08x}')
     open(base + '.orig.spv', 'wb').write(blob)
@@ -117,15 +136,56 @@ def patch_shadow_module(tools, work, mod, blob, k, telltale):
     args = [sys.executable, '-I', PATCHER, base + '.orig.dis', base + '.p.dis', '--k', repr(k)]
     if telltale:
         args.append('--telltale')
+    if live:
+        args.append('--live-flag')
+    if glass_clear > 0:
+        args += ['--glass-clear', repr(glass_clear)]
+    if SAT_SLIDER and live:
+        args.append('--sat-slider')
     info = json.loads(run(args).strip().splitlines()[-1])
     info['off'] = off
-    if not info.get('sites'):
+    patched = base + '.p.dis'
+    if bounce_clear > 0:
+        bargs = [sys.executable, '-I', BOUNCE_PATCHER, patched, base + '.b.dis', '--bounce-clear', repr(bounce_clear)]
+        if cache_marker:
+            bargs.append('--cache-kill' if cache_marker == 'kill' else '--cache-marker')
+        if nee_marker and off in NEE_PASS_OFFSETS:
+            bargs.append('--nee-marker')
+        if info.get('sites'):
+            bargs.append('--any-module')   # e.g. integrate_direct: bounce-style glass colour without the indirect-ray flag
+        if live:
+            bargs.append('--live-flag')
+            if SAT_SLIDER:
+                bargs.append('--sat-slider')
+            if telltale:
+                bargs.append('--telltale')
+        binfo = json.loads(run(bargs).strip().splitlines()[-1])
+        info['bounce_sites'] = binfo.get('bounce_sites', 0)
+        if info['bounce_sites']:
+            patched = base + '.b.dis'
+    if mask_test:
+        minfo = json.loads(run([sys.executable, '-I', MASK_TEST_PATCHER, patched, base + '.m.dis']).strip().splitlines()[-1])
+        info['mask_sites'] = minfo.get('mask_sites', 0)
+        if info['mask_sites']:
+            patched = base + '.m.dis'
+    if PANE_DEPTH and live:
+        gargs = [sys.executable, '-I', GBUF_PATCHER, patched, base + '.g.dis'] + (['--miss-probe'] if MISS_PROBE else [])
+        ginfo = json.loads(run(gargs).strip().splitlines()[-1])
+        info['gbuf_sites'] = ginfo.get('gbuf_sites', 0)
+        if info['gbuf_sites']:
+            patched = base + '.g.dis'
+    if not info.get('sites') and not info.get('bounce_sites') and not info.get('mask_sites') and not info.get('gbuf_sites'):
         return info, None
-    text = open(base + '.p.dis', encoding='utf-8').read().split('\n')
+    text = open(patched, encoding='utf-8').read().split('\n')
     return info, fit_and_validate(tools, text, mod['size'], base + '.new.spv')
 
 
-def patch_composite(tools, work, data):
+# Live switch for the composite fix: ViewDistanceArgs.noiseScale (rtx.viewDistance.noiseScale, shipped value 20) above
+# this threshold turns the sky-fade fix on. The mod writes 20.001 for ON and exactly 20 for OFF.
+NOISE_SCALE_ON_ABOVE = 20.0005
+
+
+def patch_composite(tools, work, data, live=False):
     blob = bytes(data[COMPOSITE_OFFSET:COMPOSITE_OFFSET + 400000])
     size = true_size(blob)
     blob = blob[:size]
@@ -138,7 +198,30 @@ def patch_composite(tools, work, data):
     if len(idx) != 1:
         raise RuntimeError('composite anchor not found (unsupported runtime build?)')
     # %848 = (primary view Z == miss sentinel): also skip the sky fade for rays that passed through a surface
-    text[idx[0]:idx[0] + 1] = ['%pq_or = OpLogicalOr %bool %1039 %848', '%18556 = OpLogicalNot %bool %pq_or']
+    if not live:
+        text[idx[0]:idx[0] + 1] = ['%pq_or = OpLogicalOr %bool %1039 %848', '%18556 = OpLogicalNot %bool %pq_or']
+    else:
+        def find(pat):
+            for l in text:
+                m = re.match(r'(%\S+) = ' + pat + r'\s*$', l)
+                if m:
+                    return m.group(1)
+            return None
+        t_int, t_float = find(r'OpTypeInt 32 1'), find(r'OpTypeFloat 32')
+        if not (t_int and t_float and find(r'OpVariable \S+ Uniform') and any(l.startswith('%cb = OpVariable') for l in text)):
+            raise RuntimeError('composite: types or cb variable not found')
+        pf = find(r'OpTypePointer Uniform ' + re.escape(t_float))
+        glob = [f'%pq_i5 = OpConstant {t_int} 5', f'%pq_i4 = OpConstant {t_int} 4',
+                f'%pq_thr = OpConstant {t_float} {NOISE_SCALE_ON_ABOVE!r}']
+        if not pf:
+            pf = '%pq_pf'
+            glob.append(f'{pf} = OpTypePointer Uniform {t_float}')
+        text[idx[0]:idx[0] + 1] = [
+            f'%pq_np = OpAccessChain {pf} %cb %pq_i5 %pq_i4', f'%pq_nv = OpLoad {t_float} %pq_np',
+            '%pq_on = OpFOrdGreaterThan %bool %pq_nv %pq_thr', '%pq_and = OpLogicalAnd %bool %848 %pq_on',
+            '%pq_or = OpLogicalOr %bool %1039 %pq_and', '%18556 = OpLogicalNot %bool %pq_or']
+        first_func = next(i for i, l in enumerate(text) if re.match(r'%\S+ = OpFunction ', l))
+        text[first_func:first_func] = glob
     return size, fit_and_validate(tools, text, size, os.path.join(work, 'comp.new.spv'))
 
 
@@ -149,10 +232,33 @@ def main():
     ap.add_argument('--spirv-tools', default=None, help='folder with spirv-as/dis/val (default: PATH)')
     ap.add_argument('--k', type=float, default=1.0,
                     help='light absorption scale for shadow rays: 1.0 physical, lower lets more light through (0.5 used by the author)')
+    ap.add_argument('--glass-clear', type=float, default=0.9,
+                    help='glass tint renormalisation: brightest channel of a glass material is raised to this value per '
+                         'measurement distance so coloured glass gives coloured light instead of a dark shadow (0 = off)')
+    ap.add_argument('--bounce-clear', type=float, default=0.9,
+                    help='same renormalisation for BOUNCE rays (indirect path tracing through glass), e.g. light from a sea lantern '
+                         '(0 = off)')
+    ap.add_argument('--nee-marker', action='store_true', help='DIAGNOSTIC (needs --live-flag --telltale): integrate_nee output drawn magenta')
+    ap.add_argument('--cache-marker', nargs='?', const='blue', default=None, choices=['blue', 'kill'],
+                    help='DIAGNOSTIC (needs --live-flag --telltale): NEE-cache sample radiance drawn blue, or removed with kill')
+    ap.add_argument('--mask-test', action='store_true', help='DIAGNOSTIC: main bounce rays see all instances')
+    ap.add_argument('--live-flag', action='store_true',
+                    help='gate the new shadow-ray behaviour on rtx.subsurface.enableHeuristicSingleScatteringTransmission so it can be switched at runtime')
+    ap.add_argument('--pane-depth', action='store_true',
+                    help='with --live-flag: stronger depth effect for thin glass (panes) seen directly, strength K read live from '
+                         'distanceFadeMin = 358.4 + 0.001 * K (K = 0 is the shipped look)')
+    ap.add_argument('--miss-probe', action='store_true',
+                    help='DIAGNOSTIC (needs --pane-depth): primary-ray miss branch result that would be black is drawn pink (glass) or green (water)')
+    ap.add_argument('--sat-slider', action='store_true',
+                    help='with --live-flag: glass colour saturation (0.25..2.0) is read live from noiseScale = 20.001 + 0.01 * saturation')
     ap.add_argument('--no-composite', action='store_true', help='skip the sky-fade fix')
     ap.add_argument('--telltale', action='store_true', help='debug: turn light red wherever a thick translucent is hit')
     ap.add_argument('--jobs', type=int, default=12)
     a = ap.parse_args()
+    global SAT_SLIDER, PANE_DEPTH, MISS_PROBE
+    SAT_SLIDER = a.sat_slider
+    PANE_DEPTH = a.pane_depth
+    MISS_PROBE = a.miss_probe
 
     data = bytearray(open(a.dll, 'rb').read())
     md5 = hashlib.md5(data).hexdigest()
@@ -166,7 +272,7 @@ def main():
         manifest, errors = [], []
         with cf.ThreadPoolExecutor(max_workers=a.jobs) as ex:
             futs = {ex.submit(patch_shadow_module, tools, work, m,
-                              bytes(data[m['off']:m['off'] + m['size']]), a.k, a.telltale): m
+                              bytes(data[m['off']:m['off'] + m['size']]), a.k, a.telltale, a.glass_clear, a.live_flag, a.bounce_clear, a.mask_test, a.nee_marker, a.cache_marker): m
                     for m in mods}
             for f in cf.as_completed(futs):
                 m = futs[f]
@@ -183,8 +289,16 @@ def main():
             sys.exit('ERRORS:\n' + '\n'.join(errors))
         hit = [x for x in manifest if x.get('sites')]
         print(f'shadow rays: {len(hit)} modules, {sum(x["sites"] for x in hit)} sites patched (k={a.k})')
+        mh = [x for x in manifest if x.get('mask_sites')]
+        if a.mask_test:
+            print(f'mask test: {len(mh)} modules')
+        bh = [x for x in manifest if x.get('bounce_sites')]
+        print(f'bounce rays: {len(bh)} modules, {sum(x["bounce_sites"] for x in bh)} sites patched (clear={a.bounce_clear})')
+        gh = [x for x in manifest if x.get('gbuf_sites')]
+        if a.pane_depth:
+            print(f'primary-view glass depth: {len(gh)} modules, {sum(x["gbuf_sites"] for x in gh)} sites patched')
         if not a.no_composite:
-            size, out = patch_composite(tools, work, data)
+            size, out = patch_composite(tools, work, data, a.live_flag)
             data[COMPOSITE_OFFSET:COMPOSITE_OFFSET + size] = out
             print('composite sky fade: patched')
         open(a.out, 'wb').write(data)

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "translucent-light-fix-toggle",
+  "version": "1.0.0",
+  "name": "Translucent Light Fix Toggle",
+  "description": "Light Transform Modifications: live on/off switch for the translucent light fix in the RTX Remix settings menu, with hotkeys.",
+  "license": "Apache-2.0",
+  "environment": "client",
+  "entrypoints": {
+    "preLaunch": [
+      "purrsian.translucentfix.TranslucentFixPreLaunch"
+    ],
+    "client": [
+      "purrsian.translucentfix.TranslucentFixToggle"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "1.21.1",
+    "fabric-lifecycle-events-v1": "*",
+    "fabric-key-binding-api-v1": "*"
+  }
+}

@@ -12,6 +12,27 @@ import sys
 # Light absorption scale for shadow rays (view-side glass look is untouched). 1.0 = physical, <1 = more light passes.
 K = float(sys.argv[sys.argv.index('--k') + 1]) if '--k' in sys.argv else 1.0
 
+# Glass tint renormalisation (0 = off). The material colour is a hue, not a measured transmittance: after the
+# runtime's gamma step a red pane is about (0.33, 0.006, 0.006), which leaves a block of it a dark shadow, not
+# red light. For glass-like materials (measurement distance under GLASS_MAX_DISTANCE) the brightest channel is
+# raised to this value per measurement distance and the others keep their ratio, so the light keeps the hue.
+GLASS_CLEAR = float(sys.argv[sys.argv.index('--glass-clear') + 1]) if '--glass-clear' in sys.argv else 0.0
+GLASS_MAX_DISTANCE = 0.5
+
+# Live switch (--live-flag): the new behaviour runs only while ViewDistanceArgs.noiseScale (runtime option
+# rtx.viewDistance.noiseScale, shipped value 20) is above NOISE_SCALE_ON_ABOVE. The mod writes 20.001 for ON and
+# exactly 20 for OFF, and with it at 20 every patched site is the shipped code, so the mod can toggle at runtime.
+LIVE = '--live-flag' in sys.argv
+VD_MEMBER = 8        # RaytraceArgs.viewDistanceArgs
+NOISE_MEMBER = 4     # ViewDistanceArgs.noiseScale
+NOISE_SCALE_ON_ABOVE = 20.0005
+# --sat-slider (with --live-flag): glass colour saturation 0.25..2.0 read live from the same option,
+# noiseScale = 20.001 + 0.01 * saturation (so 20.011 = 100%).
+SAT_SLIDER = '--sat-slider' in sys.argv
+# --telltale with --live-flag: the red also needs ViewDistanceArgs.distanceFadeMin (rtx.viewDistance.distanceFadeMin,
+# shipped value 358.4 here) above this, so a second key can switch the red off while the fix stays on.
+FADE_MIN_ON_ABOVE = 358.4005
+
 ID = r'%[\w.]+'
 
 
@@ -155,7 +176,7 @@ def main():
             if j < loop[0] - 200:
                 break
         sites.append({'sig_line': i, 'log_line': li, 'T': mlog.group(2), 'sig': sig, 'store_line': store[0],
-                      'P': P, 'R': R, 'rq': rq, 'loop': loop, 'tmax_ptr': tmax_ptr})
+                      'P': P, 'R': R, 'rq': rq, 'loop': loop, 'tmax_ptr': tmax_ptr, 'dist': dist})
 
     if not sites:
         print(json.dumps({'sites': 0, 'skipped': skipped}))
@@ -168,7 +189,7 @@ def main():
     n = [0]
     def nid(tag):
         n[0] += 1
-        return '%pq_' + tag + str(n[0])
+        return '%pq_' + tag + '_' + str(n[0])
 
     C_m1, C_1, C_1024, C_eps = '%pq_cm1', '%pq_c1', '%pq_c1024', '%pq_ceps'
     C_km1, C_k1 = '%pq_ckm1', '%pq_ck1'
@@ -188,6 +209,9 @@ def main():
         f'{V_1} = OpConstantComposite {t_v3} {C_1} {C_1} {C_1}',
         f'{V_eps} = OpConstantComposite {t_v3} {C_eps} {C_eps} {C_eps}',
     ]
+    if GLASS_CLEAR > 0:
+        globals_new += [f'%pq_cclear = OpConstant {t_float} {GLASS_CLEAR!r}',
+                        f'%pq_cglassmax = OpConstant {t_float} {GLASS_MAX_DISTANCE!r}']
     uint0 = None
     for l in lines:
         m = re.match(r'\s*(%\S+) = OpConstant ' + re.escape(t_uint) + r' 0\s*$', l)
@@ -197,6 +221,47 @@ def main():
     if not uint0:
         uint0 = '%pq_u0'
         globals_new.append(f'{uint0} = OpConstant {t_uint} 0')
+
+    flag_ok = False
+    if LIVE:
+        t_int = type_id(r'OpTypeInt 32 1')
+        cbvar = None
+        cb_ptr = type_id(r'OpTypePointer Uniform %RaytraceArgs_natural')
+        for l in lines:
+            m = re.match(r'\s*(%\S+) = OpVariable (%\S+) Uniform\s*$', l)
+            if m and m.group(2) == cb_ptr:
+                cbvar = m.group(1)
+                break
+        st = next((l for l in lines if re.match(r'\s*%RaytraceArgs_natural = OpTypeStruct ', l)), None)
+        if t_int and cbvar and st and st.split()[VD_MEMBER + 3] == '%ViewDistanceArgs_natural':
+            pf = type_id(r'OpTypePointer Uniform ' + re.escape(t_float))
+            if not pf:
+                pf = '%pq_pf'
+                globals_new.append(f'{pf} = OpTypePointer Uniform {t_float}')
+            globals_new += [f'%pq_cvd = OpConstant {t_int} {VD_MEMBER}', f'%pq_cns = OpConstant {t_int} {NOISE_MEMBER}',
+                            f'%pq_cthr = OpConstant {t_float} {NOISE_SCALE_ON_ABOVE!r}']
+            if telltale:
+                globals_new += [f'%pq_cfmin = OpConstant {t_int} 2',
+                                f'%pq_cthr2 = OpConstant {t_float} {FADE_MIN_ON_ABOVE!r}']
+            flag_ok = True
+            if SAT_SLIDER:
+                globals_new += [f'%pq_sbase = OpConstant {t_float} 20.001', f'%pq_s100 = OpConstant {t_float} 100',
+                                f'%pq_smin = OpConstant {t_float} 0.25', f'%pq_smax = OpConstant {t_float} 2',
+                                f'%pq_c02126 = OpConstant {t_float} 0.2126', f'%pq_c07152 = OpConstant {t_float} 0.7152',
+                                f'%pq_c00722 = OpConstant {t_float} 0.0722',
+                                f'%pq_vlum = OpConstantComposite {t_v3} %pq_c02126 %pq_c07152 %pq_c00722']
+    if LIVE and not flag_ok:
+        globals_new += [f'%pq_ctrue = OpConstantTrue {t_bool}']
+
+    def flag():
+        """(lines, id) producing the live-switch bool at the current point."""
+        if not LIVE:
+            return [], None
+        if not flag_ok:
+            return [], '%pq_ctrue'
+        p_, v_, b_ = nid('fp'), nid('fv'), nid('fb')
+        return [f'{p_} = OpAccessChain {pf} {cbvar} %pq_cvd %pq_cns', f'{v_} = OpLoad {t_float} {p_}',
+                f'{b_} = OpFOrdGreaterThan {t_bool} {v_} %pq_cthr'], b_
 
     first_func = next(i for i, l in enumerate(lines) if re.match(r'\s*%\S+ = OpFunction ', l))
     ins_after.setdefault(first_func - 1, []).extend(globals_new)
@@ -243,8 +308,13 @@ def main():
             code += [f'{hit} = OpFOrdNotEqual {t_bool} {nc} {nc}']  # placeholder replaced below
             code = code[:-1]
             code += [f'{anyc} = OpDot {t_float} {a} {a}',
-                     f'{hit} = OpFOrdGreaterThan {t_bool} {anyc} {C_eps}',
-                     f'{sel} = OpSelect {t_v3} {hit} %pq_red {e1}']
+                     f'{hit} = OpFOrdGreaterThan {t_bool} {anyc} {C_eps}']
+            if LIVE and flag_ok:
+                p2, v2, b2, h2 = nid('tp'), nid('tv'), nid('tb'), nid('th')
+                code += [f'{p2} = OpAccessChain {pf} {cbvar} %pq_cvd %pq_cfmin', f'{v2} = OpLoad {t_float} {p2}',
+                         f'{b2} = OpFOrdGreaterThan {t_bool} {v2} %pq_cthr2', f'{h2} = OpLogicalAnd {t_bool} {hit} {b2}']
+                hit = h2
+            code += [f'{sel} = OpSelect {t_v3} {hit} %pq_red {e1}']
             e1 = sel
         code += [f'{r0} = OpLoad {t_v3} {R}', f'{r1} = OpFMul {t_v3} {r0} {e1}', f'OpStore {R} {r1}']
         ins_after.setdefault(k, []).extend(code)
@@ -253,21 +323,82 @@ def main():
             # clamp T before Log
             tcl = nid('Tc')
             ll = lines[s['log_line']]
-            ins_after.setdefault(s['log_line'] - 1, []).append(f'{tcl} = OpExtInst {t_v3} {glsl} FMax {s["T"]} {V_eps}')
-            replace[s['log_line']] = re.sub(re.escape(s['T']) + r'\s*$', tcl, ll)
+            if SAT_SLIDER and LIVE and flag_ok:
+                # glass colour saturation: lerp toward / away from the luminance grey by the live slider value, glass only
+                tcl0, sp, sv, s0, s1, s2, lum, lv, df, sd, ts, tx, tn, isg2 = [nid(x) for x in (
+                    'Tc0', 'sp', 'sv', 's0', 's1', 's2', 'lum', 'lv', 'df', 'sd', 'ts', 'tx', 'tn', 'isg2')]
+                pre = [f'{tcl0} = OpExtInst {t_v3} {glsl} FMax {s["T"]} {V_eps}',
+                       f'{sp} = OpAccessChain {pf} {cbvar} %pq_cvd %pq_cns', f'{sv} = OpLoad {t_float} {sp}',
+                       f'{s0} = OpFSub {t_float} {sv} %pq_sbase', f'{s1} = OpFMul {t_float} {s0} %pq_s100',
+                       f'{s2} = OpExtInst {t_float} {glsl} FClamp {s1} %pq_smin %pq_smax',
+                       f'{lum} = OpDot {t_float} {tcl0} %pq_vlum', f'{lv} = OpCompositeConstruct {t_v3} {lum} {lum} {lum}',
+                       f'{df} = OpFSub {t_v3} {tcl0} {lv}', f'{sd} = OpVectorTimesScalar {t_v3} {df} {s2}',
+                       f'{ts} = OpFAdd {t_v3} {lv} {sd}',
+                       f'{tx} = OpExtInst {t_v3} {glsl} FMax {ts} {V_eps}', f'{tn} = OpExtInst {t_v3} {glsl} FMin {tx} {V_1}',
+                       f'{isg2} = OpFOrdLessThan {t_bool} {s["dist"]} %pq_cglassmax',
+                       f'{tcl} = OpSelect {t_v3} {isg2} {tn} {tcl0}']
+            else:
+                pre = [f'{tcl} = OpExtInst {t_v3} {glsl} FMax {s["T"]} {V_eps}']
+            operand = tcl
+            if GLASS_CLEAR > 0:
+                cx, cy, cz, mxy, mx, sc, sc1, tsc, tcap, isg, tsel = [nid(x) for x in (
+                    'gx', 'gy', 'gz', 'gmxy', 'gmx', 'gsc', 'gsc1', 'gtsc', 'gtcap', 'gisg', 'gtsel')]
+                mn1, mn, rr, sat, dd, dl, sc2 = [nid(x) for x in ('gmn1', 'gmn', 'grr', 'gsat', 'gdd', 'gdl', 'gsc2')]
+                pre += [
+                    f'{cx} = OpCompositeExtract {t_float} {tcl} 0',
+                    f'{cy} = OpCompositeExtract {t_float} {tcl} 1',
+                    f'{cz} = OpCompositeExtract {t_float} {tcl} 2',
+                    f'{mxy} = OpExtInst {t_float} {glsl} FMax {cx} {cy}',
+                    f'{mx} = OpExtInst {t_float} {glsl} FMax {mxy} {cz}',
+                    f'{sc} = OpFDiv {t_float} %pq_cclear {mx}',
+                    f'{sc1} = OpExtInst {t_float} {glsl} FMax {sc} {C_1}',
+                    # the lift only applies to SATURATED glass (keeps the hue at full brightness); a neutral dark glass
+                    # (black, grey: min == max) is not brightened at all, so it stays dark
+                    f'{mn1} = OpExtInst {t_float} {glsl} FMin {cx} {cy}',
+                    f'{mn} = OpExtInst {t_float} {glsl} FMin {mn1} {cz}',
+                    f'{rr} = OpFDiv {t_float} {mn} {mx}',
+                    f'{sat} = OpFSub {t_float} {C_1} {rr}',
+                    f'{dd} = OpFSub {t_float} {sc1} {C_1}',
+                    f'{dl} = OpFMul {t_float} {dd} {sat}',
+                    f'{sc2} = OpFAdd {t_float} {C_1} {dl}',
+                    f'{tsc} = OpVectorTimesScalar {t_v3} {tcl} {sc2}',
+                    f'{tcap} = OpExtInst {t_v3} {glsl} FMin {tsc} {V_1}',
+                    f'{isg} = OpFOrdLessThan {t_bool} {s["dist"]} %pq_cglassmax',
+                    f'{tsel} = OpSelect {t_v3} {isg} {tcap} {tcl}',
+                ]
+                operand = tsel
+            if LIVE:
+                fl, fid = flag()
+                osel = nid('lsel')
+                pre = fl + pre + [f'{osel} = OpSelect {t_v3} {fid} {operand} {s["T"]}']
+                operand = osel
+            ins_after.setdefault(s['log_line'] - 1, []).extend(pre)
+            replace[s['log_line']] = re.sub(re.escape(s['T']) + r'\s*$', operand, ll)
             t, ff, sg, st, a0, a1, a2, c0, c1, c2 = [nid(x) for x in
                 ('t', 'ff', 'sg', 'st', 'a0', 'a1', 'a2', 'c0', 'c1', 'c2')]
-            ins_after.setdefault(s['sig_line'], []).extend([
+            fl, fid = flag()
+            a2g, c2g = nid('a2g'), nid('c2g')
+            sg0 = sg
+            ins_after.setdefault(s['sig_line'], []).extend(fl + [
                 f'{t} = OpRayQueryGetIntersectionTKHR {t_float} {s["rq"]} {uint0}',
                 f'{ff} = OpRayQueryGetIntersectionFrontFaceKHR {t_bool} {s["rq"]} {uint0}',
-                f'{sg} = OpSelect {t_float} {ff} {C_km1} {C_k1}',
+                f'{sg0} = OpSelect {t_float} {ff} {C_km1} {C_k1}',
+            ] + [
                 f'{st} = OpFMul {t_float} {sg} {t}',
                 f'{a0} = OpLoad {t_v3} {A}', f'{a1} = OpVectorTimesScalar {t_v3} {s["sig"]} {st}',
-                f'{a2} = OpFAdd {t_v3} {a0} {a1}', f'OpStore {A} {a2}',
+                f'{a2} = OpFAdd {t_v3} {a0} {a1}'] + ([f'{a2g} = OpSelect {t_v3} {fid} {a2} {a0}'] if LIVE else []) + [
+                f'OpStore {A} {a2g if LIVE else a2}',
                 f'{c0} = OpLoad {t_v3} {C}', f'{c1} = OpVectorTimesScalar {t_v3} {s["sig"]} {sg}',
-                f'{c2} = OpFAdd {t_v3} {c0} {c1}', f'OpStore {C} {c2}',
+                f'{c2} = OpFAdd {t_v3} {c0} {c1}'] + ([f'{c2g} = OpSelect {t_v3} {fid} {c2} {c0}'] if LIVE else []) + [
+                f'OpStore {C} {c2g if LIVE else c2}',
             ])
-            replace[s['store_line']] = f'OpStore {s["P"]} {V_1}'
+            if LIVE:
+                mst = re.match(r'\s*OpStore (%\S+) (%\S+)\s*$', lines[s['store_line']])
+                ssel = nid('ssel')
+                ins_after.setdefault(s['store_line'] - 1, []).append(f'{ssel} = OpSelect {t_v3} {fid} {V_1} {mst.group(2)}')
+                replace[s['store_line']] = f'OpStore {s["P"]} {ssel}'
+            else:
+                replace[s['store_line']] = f'OpStore {s["P"]} {V_1}'
 
     if telltale:
         globals_new_t = [f'%pq_red = OpConstantComposite {t_v3} {C_1} {"%pq_c0"} {"%pq_c0"}',
