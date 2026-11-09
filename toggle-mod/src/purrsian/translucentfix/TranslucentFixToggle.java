@@ -264,8 +264,19 @@ public final class TranslucentFixToggle implements ClientModInitializer {
 
     // ---- hotkeys and applying the options to the runtime ----
 
+    private static boolean clientInitialized;
+
     @Override
     public void onInitializeClient() {
+        // The patched renderer jar contains this mod. If the old standalone jar is still in mods/, both register this entrypoint
+        // (same class, same key binding ids); the second call must do nothing instead of crashing the game.
+        synchronized (TranslucentFixToggle.class) {
+            if (clientInitialized) {
+                System.err.println("[translucent-fix] initialised twice (a second translucent-light-fix-toggle jar is in mods/); ignoring the duplicate");
+                return;
+            }
+            clientInitialized = true;
+        }
         // Numpad 1 / Numpad 2 by default (GLFW_KEY_KP_1 = 321, GLFW_KEY_KP_2 = 322), rebindable in Controls.
         applySunSize();
         applyGlassDepth();
