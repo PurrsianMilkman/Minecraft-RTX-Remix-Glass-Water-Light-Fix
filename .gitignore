@@ -9,3 +9,6 @@
 *.png
 __pycache__/
 work/
+dist/
+work/
+output/

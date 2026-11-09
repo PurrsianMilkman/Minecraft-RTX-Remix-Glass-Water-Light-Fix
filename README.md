@@ -8,6 +8,20 @@ This repository contains **patch scripts and a small companion mod only**. It sh
 assets: the scripts patch *your own* copy of the mod jar and runtime DLL, and refuse to run on anything but the exact builds listed
 below. Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and keep backups (see "Restore").
 
+## Easy install (one file)
+
+Download **`Make-Patched-RTX-Remix-Glass-Fix.bat`** from the Releases page (one file, no zip) and double-click it. Windows may warn
+that it is from the internet: it is a plain text batch file, open it in Notepad to read it, then choose "Run anyway".
+It downloads NVIDIA's own RTX Remix for Minecraft 0.1.0 release (about 1 GB), patches it, and writes **one jar** next to the `.bat`.
+Close Minecraft, delete the original `rtx-remix-renderer` jar from your profile's `mods` folder, and copy the new jar in
+(same file name, it replaces the original; the companion mod is merged into it, so there is nothing else to install).
+The installer needs only Windows 10/11 and about 4.5 GB of free disk space. The `.bat` carries our scripts and the changed classes inside itself
+(about 170 KB); it unpacks them into a `RemixGlassFix-files` folder beside it, downloads a portable Python and the SPIR-V tools into that folder
+(pinned versions, SHA-256 checked), and you can delete that folder afterwards. Nothing of NVIDIA's is inside the `.bat`.
+Only 0.1.0 is supported, not 0.1.1. The first start with the new jar is slower: the mod unpacks its runtime again
+(the jar's version carries a `+glassfix1` suffix for that). `tools/make_release.py --bat` builds the single-file installer; a zip version
+(`Make-Patched-Mod.bat` inside `RemixGlassFix-Installer.zip`) is built from the same sources. The manual build below is for developers.
+
 ## Status (honest version)
 
 | Item | State |
