@@ -1,7 +1,8 @@
 """Build the patched RTX Remix for Minecraft jar: one file to drop into the mods folder.
 
-Input : NVIDIA's own release (the zip from GitHub, or the jar inside it), never redistributed by this project.
-Output: <out>/rtx-remix-renderer-0.1.0-202610230634-170197a.jar  (same file name as the original, so it REPLACES it)
+Input : NVIDIA's own release jar (or the 0.1.0 release zip that contains it), never redistributed by this project.
+        Supported: RTX Remix for Minecraft 0.1.1 and 0.1.0 (picked by the jar's md5).
+Output: <out>/<same file name as the original jar>  (so it REPLACES the original in the mods folder)
 
 What is done:
   1. the pristine jar is checked against its md5;
@@ -23,8 +24,12 @@ import subprocess
 import sys
 import zipfile
 
-PRISTINE_JAR_MD5 = 'c4551ac851988aa6ec5b6299c8cbd259'
-PRISTINE_JAR_NAME = 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'
+# pristine jar md5 -> version label (also the sub-folder of prebuilt/ that holds that version's changed classes)
+BUILDS = {
+    '0b9c4d5f272fc4627d48ba6c636f2ef5': ('0.1.1', 'rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar'),
+    'c4551ac851988aa6ec5b6299c8cbd259': ('0.1.0', 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'),
+}
+ZIP_010_JAR_NAME = 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'
 DLL_ENTRY = 'native/remix-sdk-win64/d3d9.dll'
 VERSION_SUFFIX = '+glassfix1'
 TOGGLE_ENTRYPOINTS = {'preLaunch': 'purrsian.translucentfix.TranslucentFixPreLaunch',
@@ -49,8 +54,8 @@ def say(msg):
 def get_pristine_jar(a, work):
     if a.jar:
         return a.jar
-    target = os.path.join(work, 'pristine', PRISTINE_JAR_NAME)
-    if os.path.isfile(target) and md5_of(target) == PRISTINE_JAR_MD5:
+    target = os.path.join(work, 'pristine', ZIP_010_JAR_NAME)
+    if os.path.isfile(target) and md5_of(target) in BUILDS:
         say('pristine jar already extracted')
         return target
     say('extracting the mod jar from NVIDIA\'s zip ...')
@@ -68,16 +73,17 @@ def get_pristine_jar(a, work):
     return target
 
 
-def collect_prebuilt(prebuilt):
-    """{jar entry name: bytes} for every file under prebuilt/ (paths relative to prebuilt/ are the entry names)."""
+def collect_prebuilt(prebuilt, version):
+    """{jar entry name: bytes}: prebuilt/common/ (companion mod) and prebuilt/<version>/ (the changed classes of that mod version)."""
     out = {}
-    for base, _, files in os.walk(prebuilt):
-        for f in files:
-            full = os.path.join(base, f)
-            name = os.path.relpath(full, prebuilt).replace(os.sep, '/')
-            out[name] = open(full, 'rb').read()
-    if not out:
-        sys.exit('no prebuilt files in %s' % prebuilt)
+    for sub in ('common', version):
+        root = os.path.join(prebuilt, sub)
+        if not os.path.isdir(root):
+            sys.exit('prebuilt/%s is missing' % sub)
+        for base, _, files in os.walk(root):
+            for f in files:
+                full = os.path.join(base, f)
+                out[os.path.relpath(full, root).replace(os.sep, '/')] = open(full, 'rb').read()
     return out
 
 
@@ -112,9 +118,12 @@ def main():
     jar = get_pristine_jar(a, work)
     say('checking the mod jar ...')
     got = md5_of(jar)
-    if got != PRISTINE_JAR_MD5:
-        sys.exit('This is not the supported mod build (md5 %s, expected %s).\n'
-                 'Only RTX Remix for Minecraft 0.1.0 (rtx-remix-renderer-0.1.0-202610230634-170197a) is supported.' % (got, PRISTINE_JAR_MD5))
+    if got not in BUILDS:
+        sys.exit('This is not a supported mod build (md5 %s).\n'
+                 'Supported: RTX Remix for Minecraft 0.1.1 (rtx-remix-renderer-0.1.1-202611060211-7d2ba9f) and 0.1.0 '
+                 '(rtx-remix-renderer-0.1.0-202610230634-170197a), the unmodified jars from NVIDIA.' % got)
+    version, jar_name = BUILDS[got]
+    say('mod version %s' % version)
 
     say('taking the runtime DLL out of the jar ...')
     dll_orig = os.path.join(work, 'd3d9.orig.dll')
@@ -128,8 +137,8 @@ def main():
         sys.exit('the shader patch failed (see above); nothing was written')
     dll_bytes = open(dll_patched, 'rb').read()
 
-    prebuilt = collect_prebuilt(a.prebuilt)
-    out_jar = os.path.join(a.out, PRISTINE_JAR_NAME)
+    prebuilt = collect_prebuilt(a.prebuilt, version)
+    out_jar = os.path.join(a.out, jar_name)
     tmp_jar = out_jar + '.part'
     say('writing the patched jar (about 1 minute) ...')
     replaced = added = 0

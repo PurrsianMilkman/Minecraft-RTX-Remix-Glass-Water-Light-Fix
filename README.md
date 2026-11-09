@@ -12,13 +12,14 @@ below. Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and
 
 Download **`Make-Patched-RTX-Remix-Glass-Fix.bat`** from the Releases page (one file, no zip) and double-click it. Windows may warn
 that it is from the internet: it is a plain text batch file, open it in Notepad to read it, then choose "Run anyway".
-It downloads NVIDIA's own RTX Remix for Minecraft 0.1.0 release (about 1 GB), patches it, and writes **one jar** next to the `.bat`.
+If the original mod is already on your PC it is used; otherwise it downloads NVIDIA's own RTX Remix for Minecraft 0.1.1 jar (about 1 GB, over
+8 connections like a browser, resumable). It patches it and writes **one jar** next to the `.bat`.
 Close Minecraft, delete the original `rtx-remix-renderer` jar from your profile's `mods` folder, and copy the new jar in
 (same file name, it replaces the original; the companion mod is merged into it, so there is nothing else to install).
 The installer needs only Windows 10/11 and about 4.5 GB of free disk space. The `.bat` carries our scripts and the changed classes inside itself
 (about 170 KB); it unpacks them into a `RemixGlassFix-files` folder beside it, downloads a portable Python and the SPIR-V tools into that folder
 (pinned versions, SHA-256 checked), and you can delete that folder afterwards. Nothing of NVIDIA's is inside the `.bat`.
-Only 0.1.0 is supported, not 0.1.1. The first start with the new jar is slower: the mod unpacks its runtime again
+Supported: NVIDIA's **0.1.1 (latest)** and 0.1.0. The first start with the new jar is slower: the mod unpacks its runtime again
 (the jar's version carries a `+glassfix1` suffix for that). `tools/make_release.py --bat` builds the single-file installer; a zip version
 (`Make-Patched-Mod.bat` inside `RemixGlassFix-Installer.zip`) is built from the same sources. The manual build below is for developers.
 
@@ -42,9 +43,13 @@ Only 0.1.0 is supported, not 0.1.1. The first start with the new jar is slower: 
 
 ## Supported builds (the scripts check this)
 
-* Mod: `rtx-remix-renderer-0.1.0-202610230634-170197a.jar` (source commit `170197a`), md5 `c4551ac851988aa6ec5b6299c8cbd259` (pristine)
-* Runtime: pristine `remix-sdk/d3d9.dll`, md5 `cbe2d49f543b608a7ac45d6b2c6631ae`, 309,009,920 bytes (`remix-main+71a581da`, API 0.16.0)
+| NVIDIA release | Jar (pristine md5) | Runtime `d3d9.dll` (pristine md5) |
+|---|---|---|
+| **0.1.1** (latest, `7d2ba9f`) | `rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar`, `0b9c4d5f272fc4627d48ba6c636f2ef5` | `1ae89b5ebcd2a4dad175d96b1806d5f0`, 309,016,064 bytes |
+| 0.1.0 (`170197a`) | `rtx-remix-renderer-0.1.0-202610230634-170197a.jar`, `c4551ac851988aa6ec5b6299c8cbd259` | `cbe2d49f543b608a7ac45d6b2c6631ae`, 309,009,920 bytes (`remix-main+71a581da`, API 0.16.0) |
 
+The 647 shader modules inside the two runtimes are byte-identical (only the order of nine of them differs), so the same shader patches apply to both;
+they are found by content, not by offset.
 The runtime is an internal NVIDIA build whose source is not public (the mod's `CONTRIBUTING.md` says so), and public
 `dxvk-remix` speaks a different API version, so the fix is a **size-preserving patch of the SPIR-V shaders embedded in the DLL**.
 The patched DLL reads two Remix options as live channels, so the companion mod can switch and tune the fix without a restart.
@@ -127,8 +132,8 @@ The companion mod is plain Java: compile `toggle-mod/src/**` against the Minecra
 above and brigadier (`javac --release 21`), add `toggle-mod/assets` and `toggle-mod/fabric.mod.json`, and `jar` it.
 
 Back up the originals, copy the outputs over them, delete `javaw.dxvk-cache`, check the md5 of the DLL you copied in. Build time is about
-a minute; the first launch is slower while shaders are rebuilt. The DLL build above produced md5 `f259180a499791e87b9a13987c0fa05f`
-(built without `spirv-val`).
+a minute; the first launch is slower while shaders are rebuilt. The DLL build above produced md5 `f259180a499791e87b9a13987c0fa05f` for the 0.1.0 runtime and
+`68af47616690009975f252030d0bd25f` for the 0.1.1 runtime (both built without `spirv-val`).
 
 ## Restore
 
@@ -147,7 +152,7 @@ Put the original `d3d9.dll` and the original renderer jar back, remove the compa
 
 * The distant violet/blue skylight tint is unexplained and also happens with the mods off.
 * Glass Block Depth and Water Blue cannot be live: they change materials the mod builds once.
-* Only the builds above are supported. New mod or runtime versions need the anchors re-found (`docs/TECHNICAL.md`).
+* Only the builds above are supported. A new NVIDIA release needs its jar and runtime md5 added (the shader modules may or may not have changed; see `docs/TECHNICAL.md`).
 * The right long-term fix is in the runtime source; this should become an upstream issue or PR once the runtime branch is public.
 
 Developed with Claude Code. Investigation details, derivations and gotchas: [docs/TECHNICAL.md](docs/TECHNICAL.md).

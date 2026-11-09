@@ -102,3 +102,15 @@ the fade end. The fade then lerps to untinted sky at 100%. The patch makes the g
   caught. Prefer a full SPIRV-Tools set.
 * **Unexplained.** A violet/blue cast in skylit shade and under glass also appears with all of these mods off, so it is stock Remix behaviour.
   Measured on one screenshot, a white floor had r/g 1.17-1.24 and b/g 1.08-1.22 even in direct sun (green suppressed everywhere).
+
+## Supporting NVIDIA 0.1.1 (2026-11)
+
+* NVIDIA's 0.1.1 runtime (`d3d9.dll` 309,016,064 bytes) contains the **same 647 SPIR-V shader modules** as 0.1.0, byte for byte; only the order of nine of them
+  differs. So the shader patches need no changes, but they must find their targets by content. `build_runtime.py` therefore accepts both md5s, finds the
+  composite shader by its names (`CompositeArgs_natural`, `PrimaryLinearViewZ`, `primaryMiss`) and anchors the sky-fade edit structurally (the `OpLogicalNot` of the
+  `primaryMiss` load in the `distanceMode == 3` branch, and the view-Z-equals-sentinel comparison) instead of the numeric ids `%18556 / %1039 / %848`.
+  Rebuilding the 0.1.0 DLL with the structural anchors gives the identical md5 (`f259180a...`).
+* The class hooks (`HookEmitter`, `HookLight`, `HookSettings`, `HookCategoryScreen`, `HookMeasure`) apply to 0.1.1 unchanged (same hook counts); the three methods
+  that `BlockQuadEmitter` hooks touch pass ASM's `SimpleVerifier` (`Verify2.java`). `NativeExtractor` still re-extracts the natives when the version marker changes.
+* Download speed: GitHub release downloads can crawl on a single connection while a browser is fast. `installer/fastdl.py` downloads in 16 MB chunks over 8
+  connections (each chunk is its own Range request against the original URL, so the short-lived redirect never expires), retries stalled chunks and resumes.

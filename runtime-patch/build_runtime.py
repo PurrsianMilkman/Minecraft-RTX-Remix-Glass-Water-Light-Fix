@@ -31,8 +31,12 @@ BOUNCE_PATCHER = os.path.join(HERE, 'bounce_tint_patch.py')
 MASK_TEST_PATCHER = os.path.join(HERE, 'mask_test_patch.py')
 GBUF_PATCHER = os.path.join(HERE, 'gbuf_patch.py')
 
-SUPPORTED_MD5 = 'cbe2d49f543b608a7ac45d6b2c6631ae'   # remix-main+71a581da, 309,009,920 bytes
-COMPOSITE_OFFSET = 0x12430950                         # composite compute shader inside that build
+# Supported runtimes (md5 of the pristine d3d9.dll). The 647 embedded shader modules are byte-identical in both builds (only the
+# order of 9 of them differs), so every patch is found by content, never by a fixed offset.
+SUPPORTED_BUILDS = {
+    'cbe2d49f543b608a7ac45d6b2c6631ae': 'RTX Remix for Minecraft 0.1.0 (remix-main+71a581da, 309,009,920 bytes)',
+    '1ae89b5ebcd2a4dad175d96b1806d5f0': 'RTX Remix for Minecraft 0.1.1 (309,016,064 bytes)',
+}
 SPIRV_MAGIC = b'\x03\x02\x23\x07'
 SPIRV_1_5 = struct.pack('<I', 0x00010500)
 
@@ -185,21 +189,51 @@ def patch_shadow_module(tools, work, mod, blob, k, telltale, glass_clear, live, 
 NOISE_SCALE_ON_ABOVE = 20.0005
 
 
+def find_composite(data):
+    """Offset of the composite compute shader: the largest module that uses CompositeArgs and the primary linear view Z."""
+    best = None
+    for m in find_modules(bytes(data)):
+        blob = bytes(data[m['off']:m['off'] + m['size']])
+        if b'CompositeArgs_natural' in blob and b'PrimaryLinearViewZ' in blob and b'primaryMiss' in blob:
+            if best is None or m['size'] > best['size']:
+                best = m
+    if best is None:
+        raise RuntimeError('composite shader not found (unsupported runtime build?)')
+    return best['off']
+
+
 def patch_composite(tools, work, data, live=False):
-    blob = bytes(data[COMPOSITE_OFFSET:COMPOSITE_OFFSET + 400000])
+    off = find_composite(data)
+    blob = bytes(data[off:off + 400000])
     size = true_size(blob)
     blob = blob[:size]
     open(os.path.join(work, 'comp.orig.spv'), 'wb').write(blob)
     run([tools.dis, '--no-header', '--no-indent', os.path.join(work, 'comp.orig.spv'),
          '-o', os.path.join(work, 'comp.orig.dis')])
     text = open(os.path.join(work, 'comp.orig.dis'), encoding='utf-8').read().split('\n')
-    old = '%18556 = OpLogicalNot %bool %1039'     # distanceMode == 3 && !primaryMiss
-    idx = [i for i, l in enumerate(text) if l.strip() == old]
+    # anchor, by structure (ids differ between builds): in the branch taken when ViewDistanceArgs.distanceMode == 3 the shader stores
+    # !primaryMiss, i.e.  %N = OpLogicalNot %bool %P   with   %P = OpLoad %bool %primaryMiss
+    miss_loads = {m.group(1) for l in text for m in [re.match(r'(%\S+) = OpLoad %bool %primaryMiss\s*$', l.strip())] if m}
+    idx = []
+    for i, l in enumerate(text):
+        m = re.match(r'(%\S+) = OpLogicalNot %bool (%\S+)\s*$', l.strip())
+        if m and m.group(2) in miss_loads and text[i - 1].strip().endswith('= OpLabel') and text[i + 1].strip().startswith('OpStore') \
+                and any('OpIEqual %bool' in x and x.strip().endswith('%uint_3') for x in text[max(0, i - 12):i]):
+            idx.append(i)
     if len(idx) != 1:
         raise RuntimeError('composite anchor not found (unsupported runtime build?)')
+    N_ID, P_ID = re.match(r'(%\S+) = OpLogicalNot %bool (%\S+)\s*$', text[idx[0]].strip()).groups()
+    # E = (primary linear view Z == miss sentinel): the fetched view Z (.x of an ImageFetch of PrimaryLinearViewZ) compared with a uniform float
+    viewz_loads = {m.group(1) for l in text for m in [re.match(r'(%\S+) = OpLoad \S+ %PrimaryLinearViewZ\s*$', l.strip())] if m}
+    fetch = {m.group(1) for l in text for m in [re.match(r'(%\S+) = OpImageFetch %v4float (%\S+) ', l.strip())] if m and m.group(2) in viewz_loads}
+    xs = {m.group(1) for l in text for m in [re.match(r'(%\S+) = OpCompositeExtract %float (%\S+) 0\s*$', l.strip())] if m and m.group(2) in fetch}
+    eq = [m.group(1) for l in text for m in [re.match(r'(%\S+) = OpFOrdEqual %bool (%\S+) (%\S+)\s*$', l.strip())] if m and m.group(2) in xs]
+    if not eq:
+        raise RuntimeError('composite: view-Z miss comparison not found')
+    E_ID = eq[0]
     # %848 = (primary view Z == miss sentinel): also skip the sky fade for rays that passed through a surface
     if not live:
-        text[idx[0]:idx[0] + 1] = ['%pq_or = OpLogicalOr %bool %1039 %848', '%18556 = OpLogicalNot %bool %pq_or']
+        text[idx[0]:idx[0] + 1] = [f'%pq_or = OpLogicalOr %bool {P_ID} {E_ID}', f'{N_ID} = OpLogicalNot %bool %pq_or']
     else:
         def find(pat):
             for l in text:
@@ -218,11 +252,11 @@ def patch_composite(tools, work, data, live=False):
             glob.append(f'{pf} = OpTypePointer Uniform {t_float}')
         text[idx[0]:idx[0] + 1] = [
             f'%pq_np = OpAccessChain {pf} %cb %pq_i5 %pq_i4', f'%pq_nv = OpLoad {t_float} %pq_np',
-            '%pq_on = OpFOrdGreaterThan %bool %pq_nv %pq_thr', '%pq_and = OpLogicalAnd %bool %848 %pq_on',
-            '%pq_or = OpLogicalOr %bool %1039 %pq_and', '%18556 = OpLogicalNot %bool %pq_or']
+            '%pq_on = OpFOrdGreaterThan %bool %pq_nv %pq_thr', f'%pq_and = OpLogicalAnd %bool {E_ID} %pq_on',
+            f'%pq_or = OpLogicalOr %bool {P_ID} %pq_and', f'{N_ID} = OpLogicalNot %bool %pq_or']
         first_func = next(i for i, l in enumerate(text) if re.match(r'%\S+ = OpFunction ', l))
         text[first_func:first_func] = glob
-    return size, fit_and_validate(tools, text, size, os.path.join(work, 'comp.new.spv'))
+    return off, size, fit_and_validate(tools, text, size, os.path.join(work, 'comp.new.spv'))
 
 
 def main():
@@ -262,8 +296,9 @@ def main():
 
     data = bytearray(open(a.dll, 'rb').read())
     md5 = hashlib.md5(data).hexdigest()
-    if md5 != SUPPORTED_MD5:
-        sys.exit(f'unsupported d3d9.dll (md5 {md5}); this tool only supports {SUPPORTED_MD5}')
+    if md5 not in SUPPORTED_BUILDS:
+        sys.exit(f'unsupported d3d9.dll (md5 {md5}); this tool supports: ' + '; '.join(f'{k} = {v}' for k, v in SUPPORTED_BUILDS.items()))
+    print('runtime build:', SUPPORTED_BUILDS[md5])
     tools = Tools(a.spirv_tools)
     work = tempfile.mkdtemp(prefix='remixpatch_')
     try:
@@ -298,8 +333,8 @@ def main():
         if a.pane_depth:
             print(f'primary-view glass depth: {len(gh)} modules, {sum(x["gbuf_sites"] for x in gh)} sites patched')
         if not a.no_composite:
-            size, out = patch_composite(tools, work, data, a.live_flag)
-            data[COMPOSITE_OFFSET:COMPOSITE_OFFSET + size] = out
+            off, size, out = patch_composite(tools, work, data, a.live_flag)
+            data[off:off + size] = out
             print('composite sky fade: patched')
         open(a.out, 'wb').write(data)
         print('wrote', a.out, 'md5', hashlib.md5(data).hexdigest())

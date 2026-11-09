@@ -4,10 +4,10 @@ The package holds our scripts and the compiled classes that differ from NVIDIA's
 classes plus our own helpers and the companion mod). It does NOT hold NVIDIA's DLL or jar: the installer downloads those from NVIDIA.
 
 Inputs (all built from this repository with mod-patch/patch_jar.py and a plain javac build of toggle-mod/):
-  --pristine  NVIDIA's original rtx-remix-renderer jar (to find which classes differ)
-  --patched   the jar patch_jar.py produced from it
-  --toggle    the companion mod jar built from toggle-mod/
-Usage: python tools/make_release.py --pristine A.jar --patched B.jar --toggle C.jar --out dist/RemixGlassFix-Installer.zip
+  --build VERSION PRISTINE PATCHED   repeatable: NVIDIA's original jar of that mod version (to find which classes differ) and the
+                                     jar patch_jar.py produced from it, e.g. --build 0.1.1 orig011.jar patched011.jar
+  --toggle    the companion mod jar built from toggle-mod/ (same for every version)
+Usage: python tools/make_release.py --build 0.1.1 A.jar B.jar --build 0.1.0 C.jar D.jar --toggle T.jar --out dist/RemixGlassFix-Installer.zip --bat dist/X.bat
 """
 import argparse
 import os
@@ -20,30 +20,34 @@ SKIP = {'fabric.mod.json', 'native/remix-sdk-win64/d3d9.dll'}
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--pristine', required=True)
-    ap.add_argument('--patched', required=True)
+    ap.add_argument('--build', nargs=3, action='append', metavar=('VERSION', 'PRISTINE', 'PATCHED'), required=True)
     ap.add_argument('--toggle', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--bat', help='also write the single-file installer (everything embedded in one .bat)')
     a = ap.parse_args()
 
     prebuilt = {}
-    with zipfile.ZipFile(a.pristine) as p, zipfile.ZipFile(a.patched) as q:
-        crc = {i.filename: i.CRC for i in p.infolist()}
-        for i in q.infolist():
-            if i.filename in SKIP or i.filename.endswith('/'):
-                continue
-            if crc.get(i.filename) != i.CRC:
-                prebuilt[i.filename] = q.read(i)
-    print('classes differing from NVIDIA\'s jar:', len(prebuilt))
-    for n in sorted(prebuilt):
-        print('  ', n)
+    for version, pristine, patched in a.build:
+        with zipfile.ZipFile(pristine) as p, zipfile.ZipFile(patched) as q:
+            crc = {i.filename: i.CRC for i in p.infolist()}
+            changed = {}
+            for i in q.infolist():
+                if i.filename in SKIP or i.filename.endswith('/'):
+                    continue
+                if crc.get(i.filename) != i.CRC:
+                    changed[i.filename] = q.read(i)
+        print('mod %s: classes differing from NVIDIA\'s jar: %d' % (version, len(changed)))
+        for n in sorted(changed):
+            print('  ', n)
+            prebuilt[version + '/' + n] = changed[n]
+    common = {}
     with zipfile.ZipFile(a.toggle) as t:
         for i in t.infolist():
             n = i.filename
             if n.startswith('purrsian/') and n.endswith('.class') or n.startswith('assets/translucent-light-fix-toggle/') and not n.endswith('/'):
-                prebuilt[n] = t.read(i)
-    if not any(n.startswith('purrsian/') for n in prebuilt):
+                prebuilt['common/' + n] = t.read(i)
+                common[n] = 1
+    if not any(n.startswith('purrsian/') for n in common):
         sys.exit('no companion mod classes found in the toggle jar')
 
     top = 'RemixGlassFix'
@@ -51,6 +55,7 @@ def main():
              ('installer/install.ps1', os.path.join(ROOT, 'installer', 'install.ps1')),
              ('installer/build_patched_jar.py', os.path.join(ROOT, 'installer', 'build_patched_jar.py')),
              ('installer/extract_conda.py', os.path.join(ROOT, 'installer', 'extract_conda.py')),
+             ('installer/fastdl.py', os.path.join(ROOT, 'installer', 'fastdl.py')),
              ('README-INSTALL.txt', os.path.join(ROOT, 'installer', 'README-INSTALL.txt')),
              ('LICENSE', os.path.join(ROOT, 'LICENSE')), ('NOTICE', os.path.join(ROOT, 'NOTICE'))]
     for f in sorted(os.listdir(os.path.join(ROOT, 'runtime-patch'))):

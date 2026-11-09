@@ -5,9 +5,13 @@ $root = Split-Path -Parent $PSScriptRoot
 $work = Join-Path $root 'work'
 $out  = if ($env:RGF_OUT) { $env:RGF_OUT } else { Join-Path $root 'output' }   # the single-file .bat sets RGF_OUT to its own folder
 
-# Everything downloaded is pinned: official sources, fixed versions, SHA-256 checked.
-$nvidiaUrl  = 'https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases/download/v0.1.0/rtx-remix-renderer-0.1.0-202610230634-170197a.zip'
-$nvidiaSize = 1031023911
+# Everything downloaded is pinned: official sources, fixed versions, checksums.
+# Supported mod builds, newest first (NVIDIA's unmodified jars). Only the newest is ever downloaded; an older one is used if it is already on the PC.
+$mods = @(
+    @{ Version = '0.1.1'; Name = 'rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar'; Size = 1035282184; Md5 = '0b9c4d5f272fc4627d48ba6c636f2ef5';
+       Url = 'https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases/download/v0.1.1/rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar' },
+    @{ Version = '0.1.0'; Name = 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'; Size = 1034998399; Md5 = 'c4551ac851988aa6ec5b6299c8cbd259'; Url = $null }
+)
 $pyUrl  = 'https://www.python.org/ftp/python/3.14.0/python-3.14.0-embed-amd64.zip'
 $pySha  = '8d4d3590c10449d78aa4375f534e6d5f3027d67fdc362dd1a882279db6f90fdf'
 $spvUrl = 'https://conda.anaconda.org/conda-forge/win-64/spirv-tools-2026.4-h49e36cd_2.conda'
@@ -16,10 +20,9 @@ $spvSha = '933e40fe9ca887a63ef742260f0ed801cda317354806504d864764a4ed9749e1'
 function Say($m) { Write-Host $m }
 function Fail($m) { Write-Host ''; Write-Host "ERROR: $m" -ForegroundColor Red; exit 1 }
 
+# Small files: curl, with stall detection and retries.
 function Download($url, $dest, $label) {
     Say "Downloading $label ..."
-    # A connection that crawls (under ~1 MB/s for 20 s) is dropped and retried; the file resumes where it stopped, and a new
-    # connection often lands on a faster server. Up to 8 attempts.
     for ($try = 1; $try -le 8; $try++) {
         & curl.exe -L --fail -C - -# --connect-timeout 20 --speed-limit 1000000 --speed-time 20 -o $dest $url
         if ($LASTEXITCODE -eq 0) { return }
@@ -33,9 +36,8 @@ function CheckSha($path, $sha, $label) {
 }
 
 if ($env:RGF_SELFTEST) { Write-Host "self-test ok: root=$root out=$out prebuilt=$(Test-Path (Join-Path $root 'prebuilt'))"; exit 0 }
-$origJarName = 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'
-$origJarSize = 1034998399
-$origJarMd5  = 'c4551ac851988aa6ec5b6299c8cbd259'
+
+# The original mod may already be on this PC (Modrinth, Prism, CurseForge, .minecraft, Downloads): then nothing has to be downloaded.
 function Find-LocalMod {
     $dirs = New-Object System.Collections.Generic.List[string]
     foreach ($base in @("$env:APPDATA\ModrinthApp\profiles", "$env:APPDATA\PrismLauncher\instances", "$env:USERPROFILE\curseforge\minecraft\Instances")) {
@@ -45,11 +47,13 @@ function Find-LocalMod {
             }
         }
     }
-    $dirs.Add("$env:APPDATA\.minecraft\mods"); $dirs.Add("$env:USERPROFILE\Downloads"); $dirs.Add($PSScriptRoot)
-    foreach ($d in $dirs) {
-        $f = Join-Path $d $origJarName
-        if ((Test-Path $f) -and ((Get-Item $f).Length -eq $origJarSize)) {
-            if ((Get-FileHash -Algorithm MD5 -Path $f).Hash.ToLower() -eq $origJarMd5) { return $f }
+    $dirs.Add("$env:APPDATA\.minecraft\mods"); $dirs.Add("$env:USERPROFILE\Downloads"); $dirs.Add($PSScriptRoot); $dirs.Add($work)
+    foreach ($m in $mods) {                      # newest version first
+        foreach ($d in $dirs) {
+            $f = Join-Path $d $m.Name
+            if ((Test-Path $f) -and ((Get-Item $f).Length -eq $m.Size)) {
+                if ((Get-FileHash -Algorithm MD5 -Path $f).Hash.ToLower() -eq $m.Md5) { return @{ Path = $f; Version = $m.Version } }
+            }
         }
     }
     return $null
@@ -88,23 +92,29 @@ if (-not (Test-Path (Join-Path $spvDir 'spirv-val.exe'))) {
     if ($LASTEXITCODE -ne 0) { Fail 'could not unpack the SPIR-V tools' }
 }
 
-# 3. The original mod: use the copy already on this PC if there is one (no download), otherwise NVIDIA's release zip
-$localJar = Find-LocalMod
-if ($localJar) {
-    Say "Found your original mod, no 1 GB download needed:"
-    Say "  $localJar"
-    $source = @('--jar', $localJar)
+# 3. The original mod: the copy already on this PC if there is one, otherwise NVIDIA's newest jar
+$found = Find-LocalMod
+if ($found) {
+    Say "Found your original mod (version $($found.Version)), no download needed:"
+    Say "  $($found.Path)"
+    $jar = $found.Path
 } else {
-    $zip = Join-Path $work 'rtx-remix-renderer-0.1.0.zip'
-    if (-not (Test-Path $zip) -or (Get-Item $zip).Length -ne $nvidiaSize) { Download $nvidiaUrl $zip 'NVIDIA RTX Remix for Minecraft 0.1.0 (about 1 GB)' }
-    if ((Get-Item $zip).Length -ne $nvidiaSize) { Fail 'the NVIDIA download is incomplete or different from the supported release. Delete the work folder and run this again.' }
-    $source = @('--zip', $zip)
+    $latest = $mods[0]
+    $jar = Join-Path $work $latest.Name
+    Say "Downloading NVIDIA RTX Remix for Minecraft $($latest.Version) (about 1 GB), over 8 connections like a browser ..."
+    for ($try = 1; $try -le 3; $try++) {
+        & $py -I (Join-Path $PSScriptRoot 'fastdl.py') $latest.Url $jar $latest.Size 8
+        if ($LASTEXITCODE -eq 0) { break }
+        if ($try -eq 3) { Fail 'the download did not finish. Check your internet connection and run this again; it resumes.' }
+        Say '  interrupted, resuming ...'
+    }
+    if ((Get-Item $jar).Length -ne $latest.Size) { Fail 'the NVIDIA download is incomplete. Delete the work folder and run this again.' }
 }
 
 # 4. Patch
 Say ''
 Say 'Patching ...'
-& $py -I (Join-Path $PSScriptRoot 'build_patched_jar.py') @source --prebuilt (Join-Path $root 'prebuilt') --spirv-tools $spvDir --out $out --work $work
+& $py -I (Join-Path $PSScriptRoot 'build_patched_jar.py') --jar $jar --prebuilt (Join-Path $root 'prebuilt') --spirv-tools $spvDir --out $out --work $work
 if ($LASTEXITCODE -ne 0) { Fail 'the patch did not finish (see the messages above).' }
 
 Say ''
@@ -116,6 +126,7 @@ Say 'To install it:'
 Say '  1. Close Minecraft.'
 Say '  2. Open your profile''s "mods" folder and DELETE the original rtx-remix-renderer jar.'
 Say '  3. Copy the new jar (the folder that just opened) into that mods folder.'
+Say '     (If you have an older "translucent-light-fix-toggle" jar there, delete it too: the new jar contains it.)'
 Say '  4. Start Minecraft. The first start is slower (it unpacks the runtime and builds shaders).'
 Say 'In game: RTX Remix settings > "Light Transform Modifications".'
 Say 'Afterwards you can delete the helper folder (RemixGlassFix-files or "work") to free about 3 GB.'
