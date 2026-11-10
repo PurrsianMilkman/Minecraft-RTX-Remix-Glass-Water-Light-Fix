@@ -33,8 +33,8 @@ Supported: NVIDIA's **0.1.1 (latest)** and 0.1.0. The first start with the new j
 | Glass touching an opaque block gets a real exit face | **Confirmed in game** |
 | Master switch: shipped rendering restored when off | Works live in game; one report of wrong sunlight after switching off then on is still being investigated |
 | Glass colour saturation slider, glass pane depth slider | Installed, in use |
-| Dark glass stays dark (the brightness lift only applies to saturated glass) | Installed, **untested in game** (built without `spirv-val`, see below) |
-| Glass Layer Gap (touching glass/water faces pulled 4 mm apart) | Installed, **untested in game**; hypothesis: removes black sky behind two glasses, missing middle blocks, glass-under-water flicker |
+| Dark glass stays dark (the brightness lift only applies to saturated glass) | Confirmed in game (built without `spirv-val`, see below) |
+| Glass Layer Gap (touching glass/water faces pulled 4 mm apart) | Confirmed in game: black sky behind glass plus water is fixed. Glass-under-water flicker and 3+ layer mixing not yet reported |
 | Sun Size slider (softer sun/moon shadow edges) | Installed, **untested in game** |
 | Glass Block Depth, Water Blue sliders | Installed, **untested in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | Installed, **untested in game** |
