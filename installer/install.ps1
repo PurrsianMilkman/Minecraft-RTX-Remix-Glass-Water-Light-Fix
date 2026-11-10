@@ -48,6 +48,16 @@ function Find-LocalMod {
         }
     }
     $dirs.Add("$env:APPDATA\.minecraft\mods"); $dirs.Add("$env:USERPROFILE\Downloads"); $dirs.Add($PSScriptRoot); $dirs.Add($work)
+    # A jar placed next to this file (any file name) is used first: this is the way to patch without any download.
+    $sideDirs = @($env:RGF_OUT, (Get-Location).Path) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+    foreach ($d in $sideDirs) {
+        foreach ($f in (Get-ChildItem -LiteralPath $d -Filter '*.jar' -File -ErrorAction SilentlyContinue)) {
+            if ($f.Name -like '*LightFix*') { continue }
+            foreach ($m in $mods) {
+                if ($f.Length -eq $m.Size -and (Get-FileHash -Algorithm MD5 -Path $f.FullName).Hash.ToLower() -eq $m.Md5) { return @{ Path = $f.FullName; Version = $m.Version } }
+            }
+        }
+    }
     foreach ($m in $mods) {                      # newest version first
         foreach ($d in $dirs) {
             $f = Join-Path $d $m.Name
@@ -69,7 +79,7 @@ if ($free -lt 4.5GB) { Fail ('About 4.5 GB of free disk space is needed here, on
 
 Say ''
 Say '=== RTX Remix for Minecraft: glass and water light fix ==='
-Say 'This patches NVIDIA''s original mod and writes ONE jar next to this file. If the original mod is already on this PC it is used, otherwise it is downloaded (about 1 GB).'
+Say 'This patches NVIDIA''s original mod and writes ONE jar next to this file, named ...-LightFix.jar. A mod jar placed next to this file is used first; else one already on this PC; else it is downloaded (about 1 GB).'
 Say ''
 
 # 1. Python (small, private copy, not installed on your system)
@@ -95,7 +105,7 @@ if (-not (Test-Path (Join-Path $spvDir 'spirv-val.exe'))) {
 # 3. The original mod: the copy already on this PC if there is one, otherwise NVIDIA's newest jar
 $found = Find-LocalMod
 if ($found) {
-    Say "Found your original mod (version $($found.Version)), no download needed:"
+    Say "Found the original mod (version $($found.Version)), no download needed:"
     Say "  $($found.Path)"
     $jar = $found.Path
 } else {
@@ -124,8 +134,8 @@ Say "  $out"
 Say ''
 Say 'To install it:'
 Say '  1. Close Minecraft.'
-Say '  2. Open your profile''s "mods" folder and DELETE the original rtx-remix-renderer jar.'
-Say '  3. Copy the new jar (the folder that just opened) into that mods folder.'
+Say '  2. Open your profile''s "mods" folder and DELETE the original rtx-remix-renderer jar (the one WITHOUT LightFix in its name).'
+Say '  3. Copy the new ...-LightFix.jar (in the folder that just opened) into that mods folder.'
 Say '     (If you have an older "translucent-light-fix-toggle" jar there, delete it too: the new jar contains it.)'
 Say '  4. Start Minecraft. The first start is slower (it unpacks the runtime and builds shaders).'
 Say 'In game: RTX Remix settings > "Light Transform Modifications".'

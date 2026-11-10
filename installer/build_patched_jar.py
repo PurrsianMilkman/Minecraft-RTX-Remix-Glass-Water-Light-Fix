@@ -2,7 +2,7 @@
 
 Input : NVIDIA's own release jar (or the 0.1.0 release zip that contains it), never redistributed by this project.
         Supported: RTX Remix for Minecraft 0.1.1 and 0.1.0 (picked by the jar's md5).
-Output: <out>/<same file name as the original jar>  (so it REPLACES the original in the mods folder)
+Output: <out>/<original jar name>-LightFix.jar  (delete the original from the mods folder, put this one in)
 
 What is done:
   1. the pristine jar is checked against its md5;
@@ -138,7 +138,7 @@ def main():
     dll_bytes = open(dll_patched, 'rb').read()
 
     prebuilt = collect_prebuilt(a.prebuilt, version)
-    out_jar = os.path.join(a.out, jar_name)
+    out_jar = os.path.join(a.out, jar_name[:-4] + '-LightFix.jar')   # never the same name as NVIDIA's jar
     tmp_jar = out_jar + '.part'
     say('writing the patched jar (about 1 minute) ...')
     replaced = added = 0

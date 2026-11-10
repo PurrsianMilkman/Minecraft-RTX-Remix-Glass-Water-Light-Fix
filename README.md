@@ -12,10 +12,12 @@ below. Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and
 
 Download **`Make-Patched-RTX-Remix-Glass-Fix.bat`** from the Releases page (one file, no zip) and double-click it. Windows may warn
 that it is from the internet: it is a plain text batch file, open it in Notepad to read it, then choose "Run anyway".
-If the original mod is already on your PC it is used; otherwise it downloads NVIDIA's own RTX Remix for Minecraft 0.1.1 jar (about 1 GB, over
-8 connections like a browser, resumable). It patches it and writes **one jar** next to the `.bat`.
-Close Minecraft, delete the original `rtx-remix-renderer` jar from your profile's `mods` folder, and copy the new jar in
-(same file name, it replaces the original; the companion mod is merged into it, so there is nothing else to install).
+**No download needed:** put NVIDIA's mod jar (any file name) in the same folder as the `.bat` and it is patched from there. Otherwise, if the
+original mod is already on your PC (Modrinth, Prism, CurseForge, `.minecraft`, Downloads) that copy is used, and only if none is found it downloads
+NVIDIA's own RTX Remix for Minecraft 0.1.1 jar (about 1 GB, over 8 connections, resumable). It writes **one jar** next to the `.bat`, named like the
+original with **`-LightFix`** added (for example `rtx-remix-renderer-0.1.1-202611060211-7d2ba9f-LightFix.jar`).
+Close Minecraft, delete the original `rtx-remix-renderer` jar from your profile's `mods` folder, and copy the `-LightFix` jar in
+(the companion mod is merged into it, so there is nothing else to install).
 The installer needs only Windows 10/11 and about 4.5 GB of free disk space. The `.bat` carries our scripts and the changed classes inside itself
 (about 170 KB); it unpacks them into a `RemixGlassFix-files` folder beside it, downloads a portable Python and the SPIR-V tools into that folder
 (pinned versions, SHA-256 checked), and you can delete that folder afterwards. Nothing of NVIDIA's is inside the `.bat`.
@@ -151,6 +153,8 @@ Put the original `d3d9.dll` and the original renderer jar back, remove the compa
 ## Known gaps
 
 * The distant violet/blue skylight tint is unexplained and also happens with the mods off.
+* White light can still show through coloured glass in some spots. This comes from the NEE (next-event estimation) cache, which stores its own
+  light and shadow data and does not go through the glass tint patches. Not fixed here.
 * Glass Block Depth and Water Blue cannot be live: they change materials the mod builds once.
 * Only the builds above are supported. A new NVIDIA release needs its jar and runtime md5 added (the shader modules may or may not have changed; see `docs/TECHNICAL.md`).
 * The right long-term fix is in the runtime source; this should become an upstream issue or PR once the runtime branch is public.
