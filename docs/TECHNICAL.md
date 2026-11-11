@@ -114,3 +114,29 @@ the fade end. The fade then lerps to untinted sky at 100%. The patch makes the g
   that `BlockQuadEmitter` hooks touch pass ASM's `SimpleVerifier` (`Verify2.java`). `NativeExtractor` still re-extracts the natives when the version marker changes.
 * Download speed: GitHub release downloads can crawl on a single connection while a browser is fast. `installer/fastdl.py` downloads in 16 MB chunks over 8
   connections (each chunk is its own Range request against the original URL, so the short-lived redirect never expires), retries stalled chunks and resumes.
+
+## Reflections through glass and water (2026-11)
+
+Symptom (stock Remix too): the reflection on a water surface disappears when it is seen through glass, through water, or through any stack of them.
+Alt+X shows that turning off `PSTR Secondary Incident Split Approximation` brings it back.
+
+What the shader does (read from the primary-ray `gbuffer_psr_*` modules, 108 of the 647 modules read the option):
+* A loop crosses each see-through interface (PSTR). A per-ray counter is compared with `psrrMaxBounces` / `pstrMaxBounces` (RaytraceArgs members 43 / 44).
+  A flag bit tracks "inside a medium", toggled when a transmission is set up.
+* When the ray ENTERS a medium (flag becomes set) the interface is replaced iff `enablePSTRSecondaryIncidentSplitApproximation` (member 132); when it
+  leaves one, iff `enablePSTROutgoingSplitApproximation` (member 131) together with the transmission lobe. A replaced interface multiplies the throughput by
+  (1 - Fresnel) and its reflection is not drawn.
+* An interface that is not replaced ends the loop and becomes the visible surface, shaded normally (reflection included).
+
+Attempts, in order:
+1. Exempting "water" by a measurement-distance test: the value read (`%162261`) is not the measurement distance (it is multiplied into radiance and used as a mix
+   weight); the patch did nothing. Lesson: check what an SSA value IS before gating on it.
+2. Ending the replacement at every later entering interface (`counter > 1`): fixes one glass or one water layer, but in a stack the replacement ends at a wall or pane
+   that still has layers behind it, which then lose their reflection, and a water wall drawn as a visible surface uses the bluer non-replacement path.
+3. Current: later entering interface AND horizontal (`|N.y| > 0.7`, N = the value normalised and passed to `Refract`). The first interface, walls and panes stay as shipped.
+
+Patch: `runtime-patch/psr_water_patch.py`, option `--psr-water` of `build_runtime.py` (in the installer's DLL arguments). Counter, normal and the option read are found
+structurally per module (unique in all 108); each patched module is validated with spirv-val. Gate: `ViewDistanceArgs.noiseScale > 20.0005` (Master Switch).
+Assumption: the interface normal is in a space where up is +Y (Minecraft); if not, stacks behave as stock.
+
+Related observation: with PSR reflection and transmission switched off, water looks very blue. That is stock behaviour (not our patches); the cause is not isolated.

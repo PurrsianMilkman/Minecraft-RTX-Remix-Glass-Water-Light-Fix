@@ -37,11 +37,13 @@ Supported: NVIDIA's **0.1.1 (latest)** and 0.1.0. The first start with the new j
 | Glass colour saturation slider, glass pane depth slider | Installed, in use |
 | Dark glass stays dark (the brightness lift only applies to saturated glass) | Confirmed in game (built without `spirv-val`, see below) |
 | Glass Layer Gap (touching glass/water faces pulled 4 mm apart) | Confirmed in game: black sky behind glass plus water is fixed. Glass-under-water flicker and 3+ layer mixing not yet reported |
+| Reflection of a water surface seen through glass or water (single layers and stacks) | Single glass or water layer **confirmed in game**; stacks (glass then water, water then glass) installed, being checked. Stock Remix hides these reflections |
 | Sun Size slider (softer sun/moon shadow edges) | Installed, **untested in game** |
 | Glass Block Depth, Water Blue sliders | Installed, **untested in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | Installed, **untested in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional, results not reported |
-| Distant violet/blue skylight tint | **Not solved.** Present with these mods off too (stock Remix) |
+| Distant violet/blue skylight tint | Went away once the profile's config matched a stock instance (a main-profile setting, not our shaders); the exact setting was not isolated. A user.conf that pins `rtx.viewDistance.noiseScale` / `distanceFadeMin` silently disables the Master Switch: never save from the Alt+X menu |
+| Water looks very blue when drawn as an ordinary visible surface (PSR off) | Stock Remix behaviour, cause not found yet (sky reflection or absorption path) |
 
 ## Supported builds (the scripts check this)
 
@@ -81,6 +83,13 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
    `max(T, K * measurementDistance)` for glass, with K read live (Glass Pane Depth Effect).
 8. **Coplanar faces between different glass-like blocks** (vanilla only culls the face between two blocks of the same kind): with
    Glass Layer Gap on, glass faces that touch another glass or water block are pulled 4 mm into their own block.
+
+9. **Reflections of water (or glass) seen through another see-through layer** (`runtime-patch/psr_water_patch.py`). Stock Remix drops them: the
+   primary-ray shader crosses each interface with primary surface transmission replacement (PSTR) and, for an interface the ray enters,
+   `enablePSTRSecondaryIncidentSplitApproximation` crosses it as pure transmission and drops its reflection. Turning that option off restores the
+   reflection but also changes the first layer. The patch leaves the first interface and every wall or pane as shipped and turns the approximation off
+   only for a later interface whose normal is roughly vertical (`|N.y| > 0.7`: a water surface or glass floor/roof), using the shader's own interface
+   counter, so that surface is drawn as a visible surface and reflects. Live-gated like the other patches. See `docs/TECHNICAL.md`.
 
 ## The companion mod and the settings menu
 

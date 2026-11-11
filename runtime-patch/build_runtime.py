@@ -30,6 +30,7 @@ PATCHER = os.path.join(HERE, 'shadow_ray_patch.py')
 BOUNCE_PATCHER = os.path.join(HERE, 'bounce_tint_patch.py')
 MASK_TEST_PATCHER = os.path.join(HERE, 'mask_test_patch.py')
 GBUF_PATCHER = os.path.join(HERE, 'gbuf_patch.py')
+PSR_WATER_PATCHER = os.path.join(HERE, 'psr_water_patch.py')
 
 # Supported runtimes (md5 of the pristine d3d9.dll). The 647 embedded shader modules are byte-identical in both builds (only the
 # order of 9 of them differs), so every patch is found by content, never by a fixed offset.
@@ -129,6 +130,7 @@ def fit_and_validate(tools, text_lines, size, path):
 NEE_PASS_OFFSETS = (0x11e4cf60, 0x11ea2470)   # 'integrate_nee' modules of the supported build
 MISS_PROBE = False   # set by --miss-probe: DIAGNOSTIC colours for the primary-ray miss branch (needs --pane-depth)
 PANE_DEPTH = False   # set by --pane-depth: thin glass seen directly absorbs as if K*d thick, K live from distanceFadeMin
+PSR_WATER = False    # set by --psr-water: water keeps its reflection when seen through glass (PSTR secondary incident approximation off for non-glass)
 SAT_SLIDER = False   # set by --sat-slider: glass colour saturation read live from noiseScale = 20.001 + 0.01 * saturation
 
 
@@ -178,7 +180,13 @@ def patch_shadow_module(tools, work, mod, blob, k, telltale, glass_clear, live, 
         info['gbuf_sites'] = ginfo.get('gbuf_sites', 0)
         if info['gbuf_sites']:
             patched = base + '.g.dis'
-    if not info.get('sites') and not info.get('bounce_sites') and not info.get('mask_sites') and not info.get('gbuf_sites'):
+    if PSR_WATER and live:
+        wargs = [sys.executable, '-I', PSR_WATER_PATCHER, patched, base + '.w.dis']
+        winfo = json.loads(run(wargs).strip().splitlines()[-1])
+        info['psr_water_sites'] = winfo.get('psr_water_sites', 0)
+        if info['psr_water_sites']:
+            patched = base + '.w.dis'
+    if not info.get('sites') and not info.get('bounce_sites') and not info.get('mask_sites') and not info.get('gbuf_sites') and not info.get('psr_water_sites'):
         return info, None
     text = open(patched, encoding='utf-8').read().split('\n')
     return info, fit_and_validate(tools, text, mod['size'], base + '.new.spv')
@@ -285,14 +293,17 @@ def main():
                     help='DIAGNOSTIC (needs --pane-depth): primary-ray miss branch result that would be black is drawn pink (glass) or green (water)')
     ap.add_argument('--sat-slider', action='store_true',
                     help='with --live-flag: glass colour saturation (0.25..2.0) is read live from noiseScale = 20.001 + 0.01 * saturation')
+    ap.add_argument('--psr-water', action='store_true',
+                    help='with --live-flag: the reflection of water seen through glass is kept (see psr_water_patch.py)')
     ap.add_argument('--no-composite', action='store_true', help='skip the sky-fade fix')
     ap.add_argument('--telltale', action='store_true', help='debug: turn light red wherever a thick translucent is hit')
     ap.add_argument('--jobs', type=int, default=12)
     a = ap.parse_args()
-    global SAT_SLIDER, PANE_DEPTH, MISS_PROBE
+    global SAT_SLIDER, PANE_DEPTH, MISS_PROBE, PSR_WATER
     SAT_SLIDER = a.sat_slider
     PANE_DEPTH = a.pane_depth
     MISS_PROBE = a.miss_probe
+    PSR_WATER = a.psr_water
 
     data = bytearray(open(a.dll, 'rb').read())
     md5 = hashlib.md5(data).hexdigest()
@@ -332,6 +343,9 @@ def main():
         gh = [x for x in manifest if x.get('gbuf_sites')]
         if a.pane_depth:
             print(f'primary-view glass depth: {len(gh)} modules, {sum(x["gbuf_sites"] for x in gh)} sites patched')
+        wh = [x for x in manifest if x.get('psr_water_sites')]
+        if a.psr_water:
+            print(f'water reflection through glass: {len(wh)} modules, {sum(x["psr_water_sites"] for x in wh)} sites patched')
         if not a.no_composite:
             off, size, out = patch_composite(tools, work, data, a.live_flag)
             data[off:off + size] = out
