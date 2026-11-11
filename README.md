@@ -88,8 +88,8 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
    primary-ray shader crosses each interface with primary surface transmission replacement (PSTR) and, for an interface the ray enters,
    `enablePSTRSecondaryIncidentSplitApproximation` crosses it as pure transmission and drops its reflection. Turning that option off restores the
    reflection but also changes the first layer. The patch leaves the first interface and every wall or pane as shipped and turns the approximation off
-   only for a later interface whose normal is roughly vertical (`|N.y| > 0.7`: a water surface or glass floor/roof), using the shader's own interface
-   counter, so that surface is drawn as a visible surface and reflects. Live-gated like the other patches. See `docs/TECHNICAL.md`.
+   only for a later interface whose normal points up (`N.y > 0.7`: the top face of a water surface or glass floor/roof, seen from above), using the shader's own
+   interface counter, so that surface is drawn as a visible surface and reflects. A bottom face (looking up through glass at water above) stays as shipped. Live-gated like the other patches. See `docs/TECHNICAL.md`.
 
 ## The companion mod and the settings menu
 

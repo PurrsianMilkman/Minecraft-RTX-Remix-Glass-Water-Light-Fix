@@ -9,13 +9,14 @@ through any stack of them; turning the option off brings it back.
 
 This patch keeps the option as shipped for the FIRST interface the ray meets (the glass or water that is in front of
 everything) and for every later interface that is not a roughly horizontal surface (walls and panes), and turns the
-approximation off for a later HORIZONTAL interface (a water surface, a glass roof), so that surface is shaded as a visible
+approximation off for a later interface whose normal points UP (the top face of a water surface or glass roof, seen from above), so that surface is shaded as a visible
 surface and shows its own reflection:
-    approximation = shipped_flag && !(live_fix_on && interface_count > 1 && |normal.y| > 0.7)
+    approximation = shipped_flag && !(live_fix_on && interface_count > 1 && normal.y > 0.7)
 interface_count is the shader's own per-ray counter of replaced interfaces (the variable compared with
 RaytraceArgs.pstrMaxBounces); normal is the interface's surface normal that the same code feeds to Refract. Ending the
 replacement at a wall or pane that still has more see-through layers behind it loses the reflection of those layers and
-renders the wall with the bluer non-replacement water path, so only horizontal interfaces end it.
+renders the wall with the bluer non-replacement water path, so only up-facing interfaces end it. (Looking UP through glass at water above, the
+ray enters the water through its bottom face, normal pointing down: that must stay as shipped, otherwise the water looks too blue.)
 The patch is gated by the same live flag as the others (ViewDistanceArgs.noiseScale > 20.0005), so OFF is the shipped shader.
 
 (Version 1 tested a "measurement distance" to single out water; the value it read was not that distance. Version 2 ended the
@@ -133,14 +134,14 @@ def main():
         s = by_line.get(i)
         if s:
             n, res, b, zero = s
-            c0, p, v, fb, cn, later, off, ok, nn, ny, ay, hz, lh = [f'%pw_{x}{n}' for x in 'c0 p v fb cn later off ok nn ny ay hz lh'.split()]
+            c0, p, v, fb, cn, later, off, ok, nn, ny, hz, lh = [f'%pw_{x}{n}' for x in 'c0 p v fb cn later off ok nn ny hz lh'.split()]
             out += [f'{c0} = OpINotEqual {bo} {b} {zero}',
                     f'{p} = OpAccessChain {pf} {cb} %pw_c8 %pw_c4', f'{v} = OpLoad {fl} {p}',
                     f'{fb} = OpFOrdGreaterThan {bo} {v} %pw_thr',
                     f'{cn} = OpLoad {u8} {counter}',
                     f'{later} = OpUGreaterThan {bo} {cn} {one}',
                     f'{nn} = OpExtInst {v3} {glsl} Normalize {normal}', f'{ny} = OpCompositeExtract {fl} {nn} 1',
-                    f'{ay} = OpExtInst {fl} {glsl} FAbs {ny}', f'{hz} = OpFOrdGreaterThan {bo} {ay} %pw_up',
+                    f'{hz} = OpFOrdGreaterThan {bo} {ny} %pw_up',
                     f'{lh} = OpLogicalAnd {bo} {later} {hz}',
                     f'{off} = OpLogicalAnd {bo} {fb} {lh}', f'{ok} = OpLogicalNot {bo} {off}',
                     f'{res} = OpLogicalAnd {bo} {c0} {ok}']

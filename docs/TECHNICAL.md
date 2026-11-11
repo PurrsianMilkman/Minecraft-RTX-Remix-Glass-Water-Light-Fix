@@ -133,7 +133,9 @@ Attempts, in order:
    weight); the patch did nothing. Lesson: check what an SSA value IS before gating on it.
 2. Ending the replacement at every later entering interface (`counter > 1`): fixes one glass or one water layer, but in a stack the replacement ends at a wall or pane
    that still has layers behind it, which then lose their reflection, and a water wall drawn as a visible surface uses the bluer non-replacement path.
-3. Current: later entering interface AND horizontal (`|N.y| > 0.7`, N = the value normalised and passed to `Refract`). The first interface, walls and panes stay as shipped.
+3. Later entering interface AND horizontal (`|N.y| > 0.7`, N = the value normalised and passed to `Refract`): fixed the stacks, but looking UP through glass at water above, the
+   ray enters the water through its bottom face, which ended the replacement and drew the water too blue.
+4. Current: later entering interface whose normal points UP (`N.y > 0.7`, signed). The first interface, walls, panes and bottom faces stay as shipped.
 
 Patch: `runtime-patch/psr_water_patch.py`, option `--psr-water` of `build_runtime.py` (in the installer's DLL arguments). Counter, normal and the option read are found
 structurally per module (unique in all 108); each patched module is validated with spirv-val. Gate: `ViewDistanceArgs.noiseScale > 20.0005` (Master Switch).
