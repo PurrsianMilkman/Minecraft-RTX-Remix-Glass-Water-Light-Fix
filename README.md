@@ -10,17 +10,18 @@ below. Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and
 
 ## Easy install (one file)
 
-Download **`Make-Patched-RTX-Remix-Glass-Fix.bat`** from the Releases page (one file, no zip) and double-click it. Windows may warn
-that it is from the internet: it is a plain text batch file, open it in Notepad to read it, then choose "Run anyway".
-**No download needed:** put NVIDIA's mod jar (any file name) in the same folder as the `.bat` and it is patched from there. Otherwise, if the
-original mod is already on your PC (Modrinth, Prism, CurseForge, `.minecraft`, Downloads) that copy is used, and only if none is found it downloads
-NVIDIA's own RTX Remix for Minecraft 0.1.1 jar (about 1 GB, over 8 connections, resumable). It writes **one jar** next to the `.bat`, named like the
+Download **`Make-Patched-RTX-Remix-Glass-Fix.bat`** from the Releases page (one file, no zip). Windows may warn that it is from the internet: it is a plain
+text batch file, open it in Notepad to read it, then choose "Run anyway".
+**Put NVIDIA's original mod jar (any file name) in the same folder as the `.bat` and double-click the `.bat`.** It looks only at the jars in that folder,
+nowhere else on your PC, and nothing of the mod is downloaded. A jar is recognised by its **hash**, not its name: a 0.1.0 jar is patched with the 0.1.0 build, a
+0.1.1 jar with the 0.1.1 build, and a jar that matches neither is refused with a message (an already patched jar, another version, a damaged download). Get the
+original from NVIDIA's [releases page](https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases). It writes **one jar** next to the `.bat`, named like the
 original with **`-LightFix`** added (for example `rtx-remix-renderer-0.1.1-202611060211-7d2ba9f-LightFix.jar`).
 Close Minecraft, delete the original `rtx-remix-renderer` jar from your profile's `mods` folder, and copy the `-LightFix` jar in
 (the companion mod is merged into it, so there is nothing else to install).
 The installer needs only Windows 10/11 and about 4.5 GB of free disk space. The `.bat` carries our scripts and the changed classes inside itself
 (about 170 KB); it unpacks them into a `RemixGlassFix-files` folder beside it, downloads a portable Python and the SPIR-V tools into that folder
-(pinned versions, SHA-256 checked), and you can delete that folder afterwards. Nothing of NVIDIA's is inside the `.bat`.
+(pinned versions, SHA-256 checked, the only downloads), and you can delete that folder afterwards. Nothing of NVIDIA's is inside the `.bat`.
 Supported: NVIDIA's **0.1.1 (latest)** and 0.1.0. The first start with the new jar is slower: the mod unpacks its runtime again
 (the jar's version carries a `+glassfix1` suffix for that). `tools/make_release.py --bat` builds the single-file installer; a zip version
 (`Make-Patched-Mod.bat` inside `RemixGlassFix-Installer.zip`) is built from the same sources. The manual build below is for developers.
@@ -42,7 +43,7 @@ Supported: NVIDIA's **0.1.1 (latest)** and 0.1.0. The first start with the new j
 | Glass Block Depth, Water Blue sliders | Installed, **untested in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | Installed, **untested in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
-| Better Colored Glass GI (turns the NEE cache's first bounce off) | Installed, optional, off by default, **untested in game** |
+| White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
 | Distant violet/blue skylight tint | Went away once the profile's config matched a stock instance (a main-profile setting, not our shaders); the exact setting was not isolated. A user.conf that pins `rtx.viewDistance.noiseScale` / `distanceFadeMin` silently disables the Master Switch: never save from the Alt+X menu |
 | Royal-blue water top under glass, and blue bounce light under water or in reflected water | **Confirmed fixed in game.** Two causes (items 9 and 10 below): the reflection patch left the ray marked as already inside the water, and bounce rays flew straight through water to the sky |
 | Second, over-refracted set of shadows on sand, sandstone, snow (subsurface materials) seen through water | **Confirmed fixed in game** (item 11 below) |
@@ -103,6 +104,11 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
     snow and similar blocks a subsurface scattering profile. The diffusion profile lights points around the shaded point and, with RTXDI on, takes each point's light from the
     reservoir of the screen pixel that the point's real position projects to. Through water that pixel shows a different spot, so the surface also followed that spot's shadows
     (a second, lighter, shifted set). For pixels reached through a see-through surface (PSTR/PSRR) the patch makes the lookup use the ordinary light selection instead.
+12. **Emissive light (sea lanterns, lamps) stayed white through coloured glass and untinted through water** (`runtime-patch/nee_reservoir_patch.py`, `--nee-reservoir`).
+    The NEE cache's first-bounce pass traces one shadow ray to its chosen glowing triangle and multiplies the directly accumulated light by the glass/water tint. The same
+    sample is also written into the ReSTIR GI buffer, but with the RAW emissive radiance, and ReSTIR GI's final shading applies it with a visibility test whose ray mask has no
+    translucent bit. Light redistributed that way therefore arrived white. The patch multiplies the stored radiance by the shadow ray's attenuation, so the cache stays on
+    (no extra noise or cost) and no menu switch is needed.
 
 ## The companion mod and the settings menu
 
@@ -118,7 +124,6 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
 | Glass Layer Gap | separates touching glass/water faces (on by default) |
 | Water Blue | blue transmittance of water; **applies after a resource reload or restart** (25-150%) |
 | Sun Size | apparent size of sun and moon (100-2000%); larger = softer shadow edges |
-| Better Colored Glass GI | turns off the NEE cache on the first bounce (`rtx.neeCache.enableOnFirstBounce`) while the master switch is on, so coloured glass tints light from lamps and sea lanterns; off by default, costs some performance |
 | Water Surface Underside, Water Off Glass | geometry test switches (Underside is off by default) |
 | Hotkeys + four key buttons | click a button, press a key (Delete clears); master switch defaults to Numpad 1, debug markers Numpad 2 |
 
@@ -147,7 +152,7 @@ Close Minecraft first and build from the **pristine** files, not from files you 
 ```
 python runtime-patch/build_runtime.py --dll <pristine d3d9.dll> --out d3d9.patched.dll --spirv-tools <folder> \
        --k 0.5 --glass-clear 0.9 --bounce-clear 0.9 --live-flag --sat-slider --pane-depth \
-       --psr-water --water-reflect --sss-psr
+       --psr-water --water-reflect --sss-psr --nee-reservoir
 
 python mod-patch/patch_jar.py --jar <pristine renderer jar> --out patched.jar \
        --intermediary <profile>/.fabric/remappedJars/minecraft-1.21.1-<loader>/client-intermediary.jar \
@@ -160,7 +165,7 @@ above and brigadier (`javac --release 21`), add `toggle-mod/assets` and `toggle-
 Back up the originals, copy the outputs over them, delete `javaw.dxvk-cache`, check the md5 of the DLL you copied in. Build time is about
 a minute; the first launch is slower while shaders are rebuilt. The DLL build above produced md5 `f259180a499791e87b9a13987c0fa05f` for the 0.1.0 runtime and
 `68af47616690009975f252030d0bd25f` for the 0.1.1 runtime (both built without `spirv-val`, with the older flag set). With all the flags above (built with `spirv-val`,
-every module validated) the 0.1.1 runtime comes out as md5 `e9e0a04f84b62dfb4cb0e97ee2dbb9dd`.
+every module validated) the 0.1.1 runtime comes out as md5 `8ca11e36b667ec10ec6ed44603d95551`.
 
 ## Restore
 
@@ -178,8 +183,6 @@ Put the original `d3d9.dll` and the original renderer jar back, remove the compa
 ## Known gaps
 
 * The distant violet/blue skylight tint is unexplained and also happens with the mods off.
-* White light can still show through coloured glass in some spots. This comes from the NEE (next-event estimation) cache, which stores its own
-  light and shadow data and does not go through the glass tint patches. Not fixed here.
 * Glass Block Depth and Water Blue cannot be live: they change materials the mod builds once.
 * Only the builds above are supported. A new NVIDIA release needs its jar and runtime md5 added (the shader modules may or may not have changed; see `docs/TECHNICAL.md`).
 * The right long-term fix is in the runtime source; this should become an upstream issue or PR once the runtime branch is public.

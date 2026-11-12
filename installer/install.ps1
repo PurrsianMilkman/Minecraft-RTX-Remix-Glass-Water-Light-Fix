@@ -5,13 +5,17 @@ $root = Split-Path -Parent $PSScriptRoot
 $work = Join-Path $root 'work'
 $out  = if ($env:RGF_OUT) { $env:RGF_OUT } else { Join-Path $root 'output' }   # the single-file .bat sets RGF_OUT to its own folder
 
-# Everything downloaded is pinned: official sources, fixed versions, checksums.
-# Supported mod builds, newest first (NVIDIA's unmodified jars). Only the newest is ever downloaded; an older one is used if it is already on the PC.
+# Supported mod builds (NVIDIA's unmodified jars), identified ONLY by size and MD5, never by file name.
 $mods = @(
-    @{ Version = '0.1.1'; Name = 'rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar'; Size = 1035282184; Md5 = '0b9c4d5f272fc4627d48ba6c636f2ef5';
-       Url = 'https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases/download/v0.1.1/rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar' },
-    @{ Version = '0.1.0'; Name = 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'; Size = 1034998399; Md5 = 'c4551ac851988aa6ec5b6299c8cbd259'; Url = $null }
+    @{ Version = '0.1.1'; Size = 1035282184; Md5 = '0b9c4d5f272fc4627d48ba6c636f2ef5' },
+    @{ Version = '0.1.0'; Size = 1034998399; Md5 = 'c4551ac851988aa6ec5b6299c8cbd259' }
 )
+# The folder this file was started from: the .bat's own folder (RGF_OUT for the single-file .bat, the extracted folder for the zip).
+# The mod jar is looked for in THIS folder and nowhere else on the PC; nothing is downloaded for it.
+$src = if ($env:RGF_OUT) { $env:RGF_OUT } else { $root }
+# the single-file .bat passes its folder WITH a trailing backslash; before a closing quote that backslash would swallow the quote of the argument when the path contains spaces
+$src = $src.TrimEnd([char]92); $out = $out.TrimEnd([char]92)
+# The helper tools below (portable Python, SPIR-V tools) are downloaded: official sources, fixed versions, checksums.
 $pyUrl  = 'https://www.python.org/ftp/python/3.14.0/python-3.14.0-embed-amd64.zip'
 $pySha  = '8d4d3590c10449d78aa4375f534e6d5f3027d67fdc362dd1a882279db6f90fdf'
 $spvUrl = 'https://conda.anaconda.org/conda-forge/win-64/spirv-tools-2026.4-h49e36cd_2.conda'
@@ -37,36 +41,19 @@ function CheckSha($path, $sha, $label) {
 
 if ($env:RGF_SELFTEST) { Write-Host "self-test ok: root=$root out=$out prebuilt=$(Test-Path (Join-Path $root 'prebuilt'))"; exit 0 }
 
-# The original mod may already be on this PC (Modrinth, Prism, CurseForge, .minecraft, Downloads): then nothing has to be downloaded.
-function Find-LocalMod {
-    $dirs = New-Object System.Collections.Generic.List[string]
-    foreach ($base in @("$env:APPDATA\ModrinthApp\profiles", "$env:APPDATA\PrismLauncher\instances", "$env:USERPROFILE\curseforge\minecraft\Instances")) {
-        if (Test-Path $base) {
-            Get-ChildItem $base -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                $dirs.Add((Join-Path $_.FullName 'mods')); $dirs.Add((Join-Path $_.FullName 'minecraft\mods')); $dirs.Add((Join-Path $_.FullName '.minecraft\mods'))
+# The original mod: only the jar(s) in the folder this file was started from, matched by size and MD5 (any file name).
+# Returns every match, so a folder holding both a 0.1.0 and a 0.1.1 jar patches both. Jars with LightFix in the name (our own output) are skipped.
+function Find-SideMods {
+    $hits = @()
+    foreach ($f in (Get-ChildItem -LiteralPath $src -Filter '*.jar' -File -ErrorAction SilentlyContinue)) {
+        if ($f.Name -like '*LightFix*') { continue }
+        foreach ($m in $mods) {
+            if ($f.Length -eq $m.Size -and (Get-FileHash -Algorithm MD5 -Path $f.FullName).Hash.ToLower() -eq $m.Md5) {
+                $hits += @{ Path = $f.FullName; Version = $m.Version }
             }
         }
     }
-    $dirs.Add("$env:APPDATA\.minecraft\mods"); $dirs.Add("$env:USERPROFILE\Downloads"); $dirs.Add($PSScriptRoot); $dirs.Add($work)
-    # A jar placed next to this file (any file name) is used first: this is the way to patch without any download.
-    $sideDirs = @($env:RGF_OUT, (Get-Location).Path) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
-    foreach ($d in $sideDirs) {
-        foreach ($f in (Get-ChildItem -LiteralPath $d -Filter '*.jar' -File -ErrorAction SilentlyContinue)) {
-            if ($f.Name -like '*LightFix*') { continue }
-            foreach ($m in $mods) {
-                if ($f.Length -eq $m.Size -and (Get-FileHash -Algorithm MD5 -Path $f.FullName).Hash.ToLower() -eq $m.Md5) { return @{ Path = $f.FullName; Version = $m.Version } }
-            }
-        }
-    }
-    foreach ($m in $mods) {                      # newest version first
-        foreach ($d in $dirs) {
-            $f = Join-Path $d $m.Name
-            if ((Test-Path $f) -and ((Get-Item $f).Length -eq $m.Size)) {
-                if ((Get-FileHash -Algorithm MD5 -Path $f).Hash.ToLower() -eq $m.Md5) { return @{ Path = $f; Version = $m.Version } }
-            }
-        }
-    }
-    return $null
+    return $hits
 }
 
 if (-not [Environment]::Is64BitOperatingSystem) { Fail 'This needs 64-bit Windows 10 or 11.' }
@@ -79,7 +66,22 @@ if ($free -lt 4.5GB) { Fail ('About 4.5 GB of free disk space is needed here, on
 
 Say ''
 Say '=== RTX Remix for Minecraft: glass and water light fix ==='
-Say 'This patches NVIDIA''s original mod and writes ONE jar next to this file, named ...-LightFix.jar. A mod jar placed next to this file is used first; else one already on this PC; else it is downloaded (about 1 GB).'
+Say 'This patches NVIDIA''s original mod (0.1.0 or 0.1.1) and writes ONE jar next to this file, named ...-LightFix.jar. It only looks at the jar in the folder this file is in; the jar is recognised by its hash, not its name.'
+Say ''
+
+Say "Looking for NVIDIA's original mod jar in: $src"
+$targets = @(Find-SideMods)
+if ($targets.Count -eq 0) {
+    $others = @(Get-ChildItem -LiteralPath $src -Filter '*.jar' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*LightFix*' })
+    Say ''
+    if ($others.Count -gt 0) {
+        Say 'These jar files are in the folder, but none matches a supported build:'
+        foreach ($o in $others) { Say ('  {0}  ({1:N0} bytes)' -f $o.Name, $o.Length) }
+        Fail 'None of them is NVIDIA''s original RTX Remix for Minecraft jar, version 0.1.0 or 0.1.1 (an already patched jar, a different version or a damaged download do not match).'
+    }
+    Fail ('No mod jar found next to this file. Put NVIDIA''s original rtx-remix-renderer jar (version 0.1.0 or 0.1.1, from https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases) in the same folder as this file, then run this again. Looked in: ' + $src)
+}
+foreach ($t in $targets) { Say ('Found the original mod, version {0}: {1}' -f $t.Version, $t.Path) }
 Say ''
 
 # 1. Python (small, private copy, not installed on your system)
@@ -102,34 +104,17 @@ if (-not (Test-Path (Join-Path $spvDir 'spirv-val.exe'))) {
     if ($LASTEXITCODE -ne 0) { Fail 'could not unpack the SPIR-V tools' }
 }
 
-# 3. The original mod: the copy already on this PC if there is one, otherwise NVIDIA's newest jar
-$found = Find-LocalMod
-if ($found) {
-    Say "Found the original mod (version $($found.Version)), no download needed:"
-    Say "  $($found.Path)"
-    $jar = $found.Path
-} else {
-    $latest = $mods[0]
-    $jar = Join-Path $work $latest.Name
-    Say "Downloading NVIDIA RTX Remix for Minecraft $($latest.Version) (about 1 GB), over 8 connections like a browser ..."
-    for ($try = 1; $try -le 3; $try++) {
-        & $py -I (Join-Path $PSScriptRoot 'fastdl.py') $latest.Url $jar $latest.Size 8
-        if ($LASTEXITCODE -eq 0) { break }
-        if ($try -eq 3) { Fail 'the download did not finish. Check your internet connection and run this again; it resumes.' }
-        Say '  interrupted, resuming ...'
-    }
-    if ((Get-Item $jar).Length -ne $latest.Size) { Fail 'the NVIDIA download is incomplete. Delete the work folder and run this again.' }
+# 3. Patch each jar that was found (the version is taken from its hash by build_patched_jar.py)
+foreach ($t in $targets) {
+    Say ''
+    Say ('Patching version {0} ...' -f $t.Version)
+    & $py -I (Join-Path $PSScriptRoot 'build_patched_jar.py') --jar $t.Path --prebuilt (Join-Path $root 'prebuilt') --spirv-tools $spvDir --out $out --work $work
+    if ($LASTEXITCODE -ne 0) { Fail 'the patch did not finish (see the messages above).' }
 }
-
-# 4. Patch
-Say ''
-Say 'Patching ...'
-& $py -I (Join-Path $PSScriptRoot 'build_patched_jar.py') --jar $jar --prebuilt (Join-Path $root 'prebuilt') --spirv-tools $spvDir --out $out --work $work
-if ($LASTEXITCODE -ne 0) { Fail 'the patch did not finish (see the messages above).' }
 
 Say ''
 Say '=============================================================='
-Say 'All done. The patched mod (one jar) is here:'
+Say 'All done. The patched mod is here:'
 Say "  $out"
 Say ''
 Say 'To install it:'
@@ -141,4 +126,4 @@ Say '  4. Start Minecraft. The first start is slower (it unpacks the runtime and
 Say 'In game: RTX Remix settings > "Light Transform Modifications".'
 Say 'Afterwards you can delete the helper folder (RemixGlassFix-files or "work") to free about 3 GB.'
 Say '=============================================================='
-Start-Process explorer.exe $out
+if (-not $env:RGF_NOOPEN) { Start-Process explorer.exe $out }   # RGF_NOOPEN=1 (automated runs) skips opening the folder

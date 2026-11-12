@@ -112,8 +112,7 @@ the fade end. The fade then lerps to untinted sky at 100%. The patch makes the g
   Rebuilding the 0.1.0 DLL with the structural anchors gives the identical md5 (`f259180a...`).
 * The class hooks (`HookEmitter`, `HookLight`, `HookSettings`, `HookCategoryScreen`, `HookMeasure`) apply to 0.1.1 unchanged (same hook counts); the three methods
   that `BlockQuadEmitter` hooks touch pass ASM's `SimpleVerifier` (`Verify2.java`). `NativeExtractor` still re-extracts the natives when the version marker changes.
-* Download speed: GitHub release downloads can crawl on a single connection while a browser is fast. `installer/fastdl.py` downloads in 16 MB chunks over 8
-  connections (each chunk is its own Range request against the original URL, so the short-lived redirect never expires), retries stalled chunks and resumes.
+* Download speed: GitHub release downloads can crawl on a single connection while a browser is fast. `installer/fastdl.py` (16 MB chunks over 8 connections, each chunk its own Range request, retries, resume) was the installer's way to fetch the mod jar. The installer no longer downloads the mod at all: it patches only the original jar that sits next to the `.bat`, matched by size and MD5. The helper is kept in the repository in case a download fallback comes back.
 
 ## Reflections through glass and water (2026-11)
 
@@ -184,9 +183,24 @@ another spot, so the lighting followed that spot's shadows. Stock only falls bac
 Fix: `runtime-patch/sss_psr_patch.py` (`--sss-psr`): the inside-screen test also requires that `GeometryFlags.performPSTR | performPSRR` (bits 7 and 8) are clear, live-gated. Two modules
 (integrate_direct, ray-generation and compute variants), four sites.
 
-## Better Colored Glass GI (2026-11)
+## The NEE cache and emissive light through glass and water (2026-11)
 
-A menu option (off by default) that, while the master switch is on, writes `rtx.neeCache.enableOnFirstBounce = False` through the Remix bridge (OFF or master switch off restores the value the
-runtime started with). The NEE cache samples emissive blocks on the first bounce with a visibility ray that does not see glass, so lamp and sea-lantern light can stay white through coloured glass;
-with the cache off on the first bounce that light is traced through the glass and takes its colour, at some cost in speed. It lives in `TranslucentFixToggle` (state and option write) and
-`LightTransformSettings` (menu entry).
+How the NEE cache works (read from `nee_cache.h`, `nee_cache_light.slangh`, `update_nee_cache.comp.slang`, `integrate_nee.comp.slang`, `integrator_indirect.slangh`):
+* The world around the camera is a hashed log grid of cells (finer near the camera). Each cell holds candidates (emissive triangle ranges with a sampling probability, and analytic lights) and a
+  few stored sample points (position, normal, raw emissive radiance, pdf).
+* Learning: integrators call `cell.insertSlotTask(task, radiance)` with the light that SURVIVED their shadow ray, into a hash-slot buffer (atomic max / add, luminance quantised). The update pass
+  (`update_nee_cache`) merges the slots with the old candidates, decays them (`learningRate`, `ageCullingSpeed`, `cullingThreshold`), explores neighbouring triangles, and writes the new
+  candidate probabilities and sample points. **The update pass traces no rays**, so the cache itself never sees glass.
+* Query: `integrate_nee` (first bounce, only when the primary surface is opaque and `enableOnFirstBounce`) and the indirect integrator (later bounces) pick a cell, draw a candidate, build the light
+  sample, weight it by MIS against the BSDF sample and trace ONE visibility ray (`evalNEESecondary`), whose attenuation multiplies the accumulated light. The mask of that ray adds the translucent
+  bit only with `rtx.enableIndirectTranslucentShadows` (true in NVIDIA's Minecraft `rtx.conf`, default false in Remix).
+
+The leak: in the ReSTIR GI variant of `integrate_nee`, when the visibility ray was not blocked by an opaque surface (glass does not block), the sample is also stored in the ReSTIR GI initial
+reservoir as `min(lightSample.radiance / lightSample.solidAnglePdf, float16 max)`, the raw emissive radiance. ReSTIR GI's final shading applies `reservoir.radiance * BRDF * avgWeight` with a final
+visibility ray (`restirGI.useFinalVisibility`) whose mask is `OPAQUE | dynamic | ALPHA_BLEND` and whose mode lacks translucent materials, so it cannot see glass or water. The directly accumulated
+NEE light was tinted, the redistributed copy was not: white light through coloured glass, untinted light through water. (The earlier workaround, switching the cache off on the first bounce,
+removed the copy but also the noise reduction.)
+
+Fix: `runtime-patch/nee_reservoir_patch.py` (`--nee-reservoir`) multiplies the reservoir radiance by the visibility attenuation, live-gated (`noiseScale > 20.0005`, otherwise the shipped value).
+The attenuation vector is the one the shader multiplies into `diffuseLight` / `specularLight` (found structurally); the reservoir site is the `FDiv` by the pdf followed by the float16-max clamp. One
+module, one site (the ReSTIR GI variant of `integrate_nee`); validated with spirv-val. The menu switch that was briefly added as a workaround for this was removed again.
