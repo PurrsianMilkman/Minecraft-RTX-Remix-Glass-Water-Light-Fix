@@ -34,7 +34,7 @@ DLL_ENTRY = 'native/remix-sdk-win64/d3d9.dll'
 VERSION_SUFFIX = '+glassfix1'
 TOGGLE_ENTRYPOINTS = {'preLaunch': 'purrsian.translucentfix.TranslucentFixPreLaunch',
                       'client': 'purrsian.translucentfix.TranslucentFixToggle'}
-DLL_ARGS = ['--k', '0.5', '--glass-clear', '0.9', '--bounce-clear', '0.9', '--live-flag', '--sat-slider', '--pane-depth', '--psr-water']
+DLL_ARGS = ['--k', '0.5', '--glass-clear', '0.9', '--bounce-clear', '0.9', '--live-flag', '--sat-slider', '--pane-depth', '--psr-water', '--water-reflect', '--sss-psr']
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 

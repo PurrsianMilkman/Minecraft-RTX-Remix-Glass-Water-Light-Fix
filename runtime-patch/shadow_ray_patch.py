@@ -331,9 +331,12 @@ def main():
                        f'{sp} = OpAccessChain {pf} {cbvar} %pq_cvd %pq_cns', f'{sv} = OpLoad {t_float} {sp}',
                        f'{s0} = OpFSub {t_float} {sv} %pq_sbase', f'{s1} = OpFMul {t_float} {s0} %pq_s100',
                        f'{s2} = OpExtInst {t_float} {glsl} FClamp {s1} %pq_smin %pq_smax',
-                       f'{lum} = OpDot {t_float} {tcl0} %pq_vlum', f'{lv} = OpCompositeConstruct {t_v3} {lum} {lum} {lum}',
-                       f'{df} = OpFSub {t_v3} {tcl0} {lv}', f'{sd} = OpVectorTimesScalar {t_v3} {df} {s2}',
-                       f'{ts} = OpFAdd {t_v3} {lv} {sd}',
+                       # hue-safe saturation (2026-11-12), see bounce_tint_patch.py: strongest channel fixed, others ^s
+                       f'{lum}x = OpCompositeExtract {t_float} {tcl0} 0', f'{lum}y = OpCompositeExtract {t_float} {tcl0} 1',
+                       f'{lum}z = OpCompositeExtract {t_float} {tcl0} 2', f'{lum}a = OpExtInst {t_float} {glsl} FMax {lum}x {lum}y',
+                       f'{lum} = OpExtInst {t_float} {glsl} FMax {lum}a {lum}z', f'{lv} = OpCompositeConstruct {t_v3} {lum} {lum} {lum}',
+                       f'{df} = OpFDiv {t_v3} {tcl0} {lv}', f'{sd} = OpCompositeConstruct {t_v3} {s2} {s2} {s2}',
+                       f'{sd}p = OpExtInst {t_v3} {glsl} Pow {df} {sd}', f'{ts} = OpFMul {t_v3} {sd}p {lv}',
                        f'{tx} = OpExtInst {t_v3} {glsl} FMax {ts} {V_eps}', f'{tn} = OpExtInst {t_v3} {glsl} FMin {tx} {V_1}',
                        f'{isg2} = OpFOrdLessThan {t_bool} {s["dist"]} %pq_cglassmax',
                        f'{tcl} = OpSelect {t_v3} {isg2} {tn} {tcl0}']

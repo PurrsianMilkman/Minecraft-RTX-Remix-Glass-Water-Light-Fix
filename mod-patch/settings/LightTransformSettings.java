@@ -46,6 +46,9 @@ public final class LightTransformSettings {
         list.add(RtxSetting.ofBool("light.glassGap", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.glassGap", "rtxremix.setting.light.glassGap.tip",
                 true, () -> get(toggle, "isGlassGap", true), v -> set(toggle, "setGlassGap", v)));
+        list.add(RtxSetting.ofBool("light.betterGlassGi", SettingGroup.LIGHT_TRANSFORM,
+                "rtxremix.setting.light.betterGlassGi", "rtxremix.setting.light.betterGlassGi.tip",
+                false, () -> get(toggle, "isBetterGlassGi", false), v -> set(toggle, "setBetterGlassGi", v)));
         list.add(RtxSetting.ofBool("light.waterUnderside", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.waterUnderside", "rtxremix.setting.light.waterUnderside.tip",
                 false, () -> get(toggle, "isWaterUnderside", false), v -> set(toggle, "setWaterUnderside", v)));

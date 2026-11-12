@@ -37,13 +37,16 @@ Supported: NVIDIA's **0.1.1 (latest)** and 0.1.0. The first start with the new j
 | Glass colour saturation slider, glass pane depth slider | Installed, in use |
 | Dark glass stays dark (the brightness lift only applies to saturated glass) | Confirmed in game (built without `spirv-val`, see below) |
 | Glass Layer Gap (touching glass/water faces pulled 4 mm apart) | Confirmed in game: black sky behind glass plus water is fixed. Glass-under-water flicker and 3+ layer mixing not yet reported |
-| Reflection of a water surface seen through glass or water (single layers and stacks) | Single glass or water layer **confirmed in game**; stacks (glass then water, water then glass) installed, being checked. Stock Remix hides these reflections |
+| Reflection of a water surface seen through glass or water, including reflected water seen through glass | **Confirmed in game** (stock Remix hides these reflections) |
 | Sun Size slider (softer sun/moon shadow edges) | Installed, **untested in game** |
 | Glass Block Depth, Water Blue sliders | Installed, **untested in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | Installed, **untested in game** |
-| Water Surface Underside, Water Off Glass (test switches) | Installed, optional, results not reported |
+| Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
+| Better Colored Glass GI (turns the NEE cache's first bounce off) | Installed, optional, off by default, **untested in game** |
 | Distant violet/blue skylight tint | Went away once the profile's config matched a stock instance (a main-profile setting, not our shaders); the exact setting was not isolated. A user.conf that pins `rtx.viewDistance.noiseScale` / `distanceFadeMin` silently disables the Master Switch: never save from the Alt+X menu |
-| Water looks very blue when drawn as an ordinary visible surface (PSR off) | Stock Remix behaviour, cause not found yet (sky reflection or absorption path) |
+| Royal-blue water top under glass, and blue bounce light under water or in reflected water | **Confirmed fixed in game.** Two causes (items 9 and 10 below): the reflection patch left the ray marked as already inside the water, and bounce rays flew straight through water to the sky |
+| Second, over-refracted set of shadows on sand, sandstone, snow (subsurface materials) seen through water | **Confirmed fixed in game** (item 11 below) |
+| With the primary-ray replacement switched off in Alt+X (PSR off), water drawn as an ordinary visible surface looks very blue | Stock Remix behaviour; not explained by the fixes above |
 
 ## Supported builds (the scripts check this)
 
@@ -89,7 +92,17 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
    `enablePSTRSecondaryIncidentSplitApproximation` crosses it as pure transmission and drops its reflection. Turning that option off restores the
    reflection but also changes the first layer. The patch leaves the first interface and every wall or pane as shipped and turns the approximation off
    only for a later interface whose normal points up (`N.y > 0.7`: the top face of a water surface or glass floor/roof, seen from above), using the shader's own
-   interface counter, so that surface is drawn as a visible surface and reflects. A bottom face (looking up through glass at water above) stays as shipped. Live-gated like the other patches. See `docs/TECHNICAL.md`.
+   interface counter, so that surface is drawn as a visible surface and reflects. A bottom face (looking up through glass at water above) stays as shipped. Live-gated like the other patches.
+   Stopping the replacement there is not enough: stock has already recorded "the ray entered the water" for that interface, so without a second step the water top is
+   shaded as if the camera were underwater (royal blue). The patch restores the medium state when it stops the replacement. See `docs/TECHNICAL.md`.
+10. **Water seen by bounce rays** (`runtime-patch/water_reflect_patch.py`, `--water-reflect`). With the shipped `enableTransmissionApproximationInIndirectRays` a bounce ray crossing
+    a translucent surface is not a hit: it is tinted and flies straight on, so a water column in a reflection becomes a window onto the sky (blue, no refraction, no
+    absorption by depth). The patch switches that approximation off for **water only** (recognised by its refractive index, 1.33 against 1.52 for glass, read from the
+    material the shader has just loaded), so water refracts, reflects and absorbs by depth as it does in stock Remix with the option off. Glass keeps the approximation.
+11. **Second set of shadows on subsurface materials seen through water** (`runtime-patch/sss_psr_patch.py`, `--sss-psr`). The RTX Remix Materials pack gives sand, sandstone,
+    snow and similar blocks a subsurface scattering profile. The diffusion profile lights points around the shaded point and, with RTXDI on, takes each point's light from the
+    reservoir of the screen pixel that the point's real position projects to. Through water that pixel shows a different spot, so the surface also followed that spot's shadows
+    (a second, lighter, shifted set). For pixels reached through a see-through surface (PSTR/PSRR) the patch makes the lookup use the ordinary light selection instead.
 
 ## The companion mod and the settings menu
 
@@ -105,7 +118,8 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
 | Glass Layer Gap | separates touching glass/water faces (on by default) |
 | Water Blue | blue transmittance of water; **applies after a resource reload or restart** (25-150%) |
 | Sun Size | apparent size of sun and moon (100-2000%); larger = softer shadow edges |
-| Water Surface Underside, Water Off Glass | geometry test switches |
+| Better Colored Glass GI | turns off the NEE cache on the first bounce (`rtx.neeCache.enableOnFirstBounce`) while the master switch is on, so coloured glass tints light from lamps and sea lanterns; off by default, costs some performance |
+| Water Surface Underside, Water Off Glass | geometry test switches (Underside is off by default) |
 | Hotkeys + four key buttons | click a button, press a key (Delete clears); master switch defaults to Numpad 1, debug markers Numpad 2 |
 
 The mod writes `rtx.viewDistance.noiseScale` (on/off flag and saturation) and `rtx.viewDistance.distanceFadeMin` (pane depth) through the
@@ -132,7 +146,8 @@ Close Minecraft first and build from the **pristine** files, not from files you 
 
 ```
 python runtime-patch/build_runtime.py --dll <pristine d3d9.dll> --out d3d9.patched.dll --spirv-tools <folder> \
-       --k 0.5 --glass-clear 0.9 --bounce-clear 0.9 --live-flag --sat-slider --pane-depth
+       --k 0.5 --glass-clear 0.9 --bounce-clear 0.9 --live-flag --sat-slider --pane-depth \
+       --psr-water --water-reflect --sss-psr
 
 python mod-patch/patch_jar.py --jar <pristine renderer jar> --out patched.jar \
        --intermediary <profile>/.fabric/remappedJars/minecraft-1.21.1-<loader>/client-intermediary.jar \
@@ -144,7 +159,8 @@ above and brigadier (`javac --release 21`), add `toggle-mod/assets` and `toggle-
 
 Back up the originals, copy the outputs over them, delete `javaw.dxvk-cache`, check the md5 of the DLL you copied in. Build time is about
 a minute; the first launch is slower while shaders are rebuilt. The DLL build above produced md5 `f259180a499791e87b9a13987c0fa05f` for the 0.1.0 runtime and
-`68af47616690009975f252030d0bd25f` for the 0.1.1 runtime (both built without `spirv-val`).
+`68af47616690009975f252030d0bd25f` for the 0.1.1 runtime (both built without `spirv-val`, with the older flag set). With all the flags above (built with `spirv-val`,
+every module validated) the 0.1.1 runtime comes out as md5 `e9e0a04f84b62dfb4cb0e97ee2dbb9dd`.
 
 ## Restore
 

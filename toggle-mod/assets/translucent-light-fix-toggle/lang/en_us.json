@@ -24,6 +24,8 @@
   "rtxremix.setting.light.waterBlue.tip": "How much blue water lets through. 100 = as shipped. Reload resources (F3+T) or restart to apply.",
   "rtxremix.setting.light.glassGap": "Glass Layer Gap",
   "rtxremix.setting.light.glassGap.tip": "Separates touching glass and water faces. Fixes black sky, missing middle glass and flicker.",
+  "rtxremix.setting.light.betterGlassGi": "Better Colored Glass GI",
+  "rtxremix.setting.light.betterGlassGi.tip": "Turns off the NEE cache on the first bounce, so coloured glass tints light from lamps and sea lanterns.",
   "rtxremix.setting.light.waterUnderside": "Water Surface Underside",
   "rtxremix.setting.light.waterUnderside.tip": "Test switch: keeps the underside of the water surface.",
   "rtxremix.setting.light.waterNudge": "Water Off Glass",

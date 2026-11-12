@@ -31,6 +31,8 @@ BOUNCE_PATCHER = os.path.join(HERE, 'bounce_tint_patch.py')
 MASK_TEST_PATCHER = os.path.join(HERE, 'mask_test_patch.py')
 GBUF_PATCHER = os.path.join(HERE, 'gbuf_patch.py')
 PSR_WATER_PATCHER = os.path.join(HERE, 'psr_water_patch.py')
+WATER_REFLECT_PATCHER = os.path.join(HERE, 'water_reflect_patch.py')
+SSS_PSR_PATCHER = os.path.join(HERE, 'sss_psr_patch.py')
 
 # Supported runtimes (md5 of the pristine d3d9.dll). The 647 embedded shader modules are byte-identical in both builds (only the
 # order of 9 of them differs), so every patch is found by content, never by a fixed offset.
@@ -130,6 +132,8 @@ def fit_and_validate(tools, text_lines, size, path):
 NEE_PASS_OFFSETS = (0x11e4cf60, 0x11ea2470)   # 'integrate_nee' modules of the supported build
 MISS_PROBE = False   # set by --miss-probe: DIAGNOSTIC colours for the primary-ray miss branch (needs --pane-depth)
 PANE_DEPTH = False   # set by --pane-depth: thin glass seen directly absorbs as if K*d thick, K live from distanceFadeMin
+WATER_REFLECT = False  # set by --water-reflect: water hit by indirect (reflection/bounce) rays is tinted half as hard per surface
+SSS_PSR = False      # set by --sss-psr: subsurface materials seen through water/glass/mirrors take their light from RIS, not a mis-projected RTXDI pixel
 PSR_WATER = False    # set by --psr-water: water keeps its reflection when seen through glass (PSTR secondary incident approximation off for non-glass)
 SAT_SLIDER = False   # set by --sat-slider: glass colour saturation read live from noiseScale = 20.001 + 0.01 * saturation
 
@@ -167,6 +171,7 @@ def patch_shadow_module(tools, work, mod, blob, k, telltale, glass_clear, live, 
                 bargs.append('--telltale')
         binfo = json.loads(run(bargs).strip().splitlines()[-1])
         info['bounce_sites'] = binfo.get('bounce_sites', 0)
+        info['chain_sites'] = binfo.get('chain_sites', 0)
         if info['bounce_sites']:
             patched = base + '.b.dis'
     if mask_test:
@@ -184,9 +189,21 @@ def patch_shadow_module(tools, work, mod, blob, k, telltale, glass_clear, live, 
         wargs = [sys.executable, '-I', PSR_WATER_PATCHER, patched, base + '.w.dis']
         winfo = json.loads(run(wargs).strip().splitlines()[-1])
         info['psr_water_sites'] = winfo.get('psr_water_sites', 0)
+        info['psr_medium_restores'] = winfo.get('psr_medium_restores', 0)
         if info['psr_water_sites']:
             patched = base + '.w.dis'
-    if not info.get('sites') and not info.get('bounce_sites') and not info.get('mask_sites') and not info.get('gbuf_sites') and not info.get('psr_water_sites'):
+    if WATER_REFLECT and live:
+        rinfo = json.loads(run([sys.executable, '-I', WATER_REFLECT_PATCHER, patched, base + '.r.dis']).strip().splitlines()[-1])
+        info['water_reflect_sites'] = rinfo.get('water_reflect_sites', 0)
+        info['water_refract_sites'] = rinfo.get('approx_tests', 0)
+        if info['water_reflect_sites']:
+            patched = base + '.r.dis'
+    if SSS_PSR and live:
+        sinfo = json.loads(run([sys.executable, '-I', SSS_PSR_PATCHER, patched, base + '.s.dis']).strip().splitlines()[-1])
+        info['sss_psr_sites'] = sinfo.get('sss_psr_sites', 0)
+        if info['sss_psr_sites']:
+            patched = base + '.s.dis'
+    if not info.get('sites') and not info.get('bounce_sites') and not info.get('mask_sites') and not info.get('gbuf_sites') and not info.get('psr_water_sites') and not info.get('water_reflect_sites') and not info.get('sss_psr_sites'):
         return info, None
     text = open(patched, encoding='utf-8').read().split('\n')
     return info, fit_and_validate(tools, text, mod['size'], base + '.new.spv')
@@ -295,15 +312,21 @@ def main():
                     help='with --live-flag: glass colour saturation (0.25..2.0) is read live from noiseScale = 20.001 + 0.01 * saturation')
     ap.add_argument('--psr-water', action='store_true',
                     help='with --live-flag: the reflection of water seen through glass is kept (see psr_water_patch.py)')
+    ap.add_argument('--water-reflect', action='store_true',
+                    help='with --live-flag: water seen in reflections/bounce light is tinted half as hard per surface (see water_reflect_patch.py)')
+    ap.add_argument('--sss-psr', action='store_true',
+                    help='with --live-flag: no second, over-refracted shadow set on subsurface materials (sand) seen through water (see sss_psr_patch.py)')
     ap.add_argument('--no-composite', action='store_true', help='skip the sky-fade fix')
     ap.add_argument('--telltale', action='store_true', help='debug: turn light red wherever a thick translucent is hit')
     ap.add_argument('--jobs', type=int, default=12)
     a = ap.parse_args()
-    global SAT_SLIDER, PANE_DEPTH, MISS_PROBE, PSR_WATER
+    global SAT_SLIDER, PANE_DEPTH, MISS_PROBE, PSR_WATER, WATER_REFLECT, SSS_PSR
     SAT_SLIDER = a.sat_slider
     PANE_DEPTH = a.pane_depth
     MISS_PROBE = a.miss_probe
     PSR_WATER = a.psr_water
+    WATER_REFLECT = a.water_reflect
+    SSS_PSR = a.sss_psr
 
     data = bytearray(open(a.dll, 'rb').read())
     md5 = hashlib.md5(data).hexdigest()
@@ -339,13 +362,20 @@ def main():
         if a.mask_test:
             print(f'mask test: {len(mh)} modules')
         bh = [x for x in manifest if x.get('bounce_sites')]
-        print(f'bounce rays: {len(bh)} modules, {sum(x["bounce_sites"] for x in bh)} sites patched (clear={a.bounce_clear})')
+        print(f'bounce rays: {len(bh)} modules, {sum(x["bounce_sites"] for x in bh)} sites patched (clear={a.bounce_clear}); '
+              f'scale/bias chain sites {sum(x.get("chain_sites", 0) for x in bh)}')
         gh = [x for x in manifest if x.get('gbuf_sites')]
         if a.pane_depth:
             print(f'primary-view glass depth: {len(gh)} modules, {sum(x["gbuf_sites"] for x in gh)} sites patched')
         wh = [x for x in manifest if x.get('psr_water_sites')]
         if a.psr_water:
-            print(f'water reflection through glass: {len(wh)} modules, {sum(x["psr_water_sites"] for x in wh)} sites patched')
+            print(f'water reflection through glass: {len(wh)} modules, {sum(x["psr_water_sites"] for x in wh)} sites patched; medium state restored at {sum(x.get("psr_medium_restores", 0) for x in wh)} of them')
+        rh = [x for x in manifest if x.get('water_reflect_sites')]
+        if a.water_reflect:
+            print(f'water in reflections: {len(rh)} modules, {sum(x["water_reflect_sites"] for x in rh)} sites patched; approximation switched off for water at {sum(x.get("water_refract_sites", 0) for x in rh)} tests')
+        sh = [x for x in manifest if x.get('sss_psr_sites')]
+        if a.sss_psr:
+            print(f'subsurface light through water/glass: {len(sh)} modules, {sum(x["sss_psr_sites"] for x in sh)} sites patched')
         if not a.no_composite:
             off, size, out = patch_composite(tools, work, data, a.live_flag)
             data[off:off + size] = out

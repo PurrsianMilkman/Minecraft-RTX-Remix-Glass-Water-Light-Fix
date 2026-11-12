@@ -125,12 +125,72 @@ def main():
     glob += [f'%pw_c8 = OpConstant {i32} {VD_MEMBER}', f'%pw_c4 = OpConstant {i32} {NOISE_MEMBER}',
              f'%pw_thr = OpConstant {fl} {NOISE_ON_ABOVE!r}', f'%pw_up = OpConstant {fl} 0.7']
 
+    # Version 5: when the rule ends the replacement, also undo the "entered a medium" bookkeeping of that same interface.
+    # Right after the continuation decision the resolver records the medium it just entered (state flag bit 1 = inside medium,
+    # mediumMaterialIndex = this surface's material) whether or not the ray continues. Ending the replacement at the water top
+    # therefore left the pixel marked as already INSIDE the water, and the water top was shaded as if seen from underneath
+    # (total internal reflection of the sky: the royal blue top of water under glass). Pattern of that bookkeeping:
+    #     %a = OpLogicalNot %bool %OLD ; OpSelectionMerge ; OpBranchConditional %a %t %f ;
+    #     %f = OpLabel ; OpStore %V %false ; OpBranch ; %t = OpLabel ; %x = OpLoad %ushort FLAGS ; %y = OpUConvert %uint %x ;
+    #     %z = OpBitwiseAnd %uint %y %uint_2 ...
+    # Just before it the state flag is put back to OLD when the rule fired in this iteration.
+    ush, u32 = tid(r'OpTypeInt 16 0'), tid(r'OpTypeInt 32 0')
+    pbool = tid(r'OpTypePointer Function ' + re.escape(bo))
+    cfalse = next(
+        (re.match(r'\s*(%\S+) = OpConstantFalse ' + re.escape(bo) + r'\s*$', l).group(1) for l in L
+         if re.match(r'\s*%\S+ = OpConstantFalse ' + re.escape(bo) + r'\s*$', l)), None)
+    restore = {}   # line index of the "%a = OpLogicalNot %OLD" -> (site number, OLD, FLAGS var)
+    if ush and u32 and pbool and cfalse:
+        for n, (j, res, b, zero) in enumerate(sites, 1):
+            for k in range(j + 1, len(L) - 9):
+                ma = re.match(r'\s*(%\S+) = OpLogicalNot ' + re.escape(bo) + r' (%\S+)\s*$', L[k])
+                if not ma:
+                    continue
+                w = [x for x in L[k + 1:k + 60] if not x.startswith('OpLine') and not x.startswith('OpNoLine')][:14]
+                if (len(w) >= 11 and w[0].startswith('OpSelectionMerge') and w[1].startswith('OpBranchConditional ' + ma.group(1))
+                        and re.match(r'%\S+ = OpLabel', w[2]) and re.match(r'OpStore %\S+ ' + re.escape(cfalse), w[3])
+                        and w[4].startswith('OpBranch') and re.match(r'%\S+ = OpLabel', w[5])):
+                    ml = re.match(r'\s*%\S+ = OpLoad ' + re.escape(ush) + r' (%\S+)\s*$', w[6])
+                    mu = re.match(r'\s*%\S+ = OpUConvert ' + re.escape(u32) + r' %\S+\s*$', w[7])
+                    mb = re.match(r'\s*%\S+ = OpBitwiseAnd ' + re.escape(u32) + r' %\S+ (%\S+)\s*$', w[8])
+                    if ml and mu and mb and defs.get(mb.group(1), (0, '', ''))[2].split()[-1:] == ['2']:
+                        restore[k] = (n, ma.group(2), ml.group(1))
+                        break
+    if len(restore) != len(sites):
+        restore = {}   # all or nothing: never leave a half-applied rule
+
+    glob2 = []
+    if restore:
+        glob2 = [f'%pw_u2 = OpConstant {u32} 2', f'%pw_uc = OpConstant {u32} 4294967293', f'%pw_u0 = OpConstant {u32} 0']
+    fired_var = '%pw_fired'
+
     by_line = {j: (n, res, b, zero) for n, (j, res, b, zero) in enumerate(sites, 1)}
     first_fn = next(i for i, l in enumerate(L) if re.match(r'\s*%\S+ = OpFunction ', l))
+    # the Function variable that remembers "the rule fired in this iteration" goes after the entry block's OpVariables
+    entry_end = None
+    if restore:
+        i = first_fn + 1
+        while i < len(L) and not re.match(r'\s*%\S+ = OpLabel', L[i]):
+            i += 1
+        i += 1
+        while i < len(L) and re.match(r'\s*%\S+ = OpVariable ', L[i]):
+            i += 1
+        entry_end = i
     out = []
     for i, l in enumerate(L):
         if i == first_fn:
-            out += glob
+            out += glob + glob2
+        if i == entry_end:
+            out += [f'{fired_var} = OpVariable {pbool} Function', f'OpStore {fired_var} {cfalse}']
+        r = restore.get(i)
+        if r:
+            n, old, flags = r
+            fl0, fu, cl, ob, rs, fd, sl, nw = [f'%pw_r{x}{n}' for x in 'fl fu cl ob rs fd sl nw'.split()]
+            out += [f'{fd} = OpLoad {bo} {fired_var}',
+                    f'{fl0} = OpLoad {ush} {flags}', f'{fu} = OpUConvert {u32} {fl0}',
+                    f'{cl} = OpBitwiseAnd {u32} {fu} %pw_uc', f'{ob} = OpSelect {u32} {old} %pw_u2 %pw_u0',
+                    f'{rs} = OpBitwiseOr {u32} {cl} {ob}', f'{sl} = OpSelect {u32} {fd} {rs} {fu}',
+                    f'{nw} = OpUConvert {ush} {sl}', f'OpStore {flags} {nw}']
         s = by_line.get(i)
         if s:
             n, res, b, zero = s
@@ -145,9 +205,11 @@ def main():
                     f'{lh} = OpLogicalAnd {bo} {later} {hz}',
                     f'{off} = OpLogicalAnd {bo} {fb} {lh}', f'{ok} = OpLogicalNot {bo} {off}',
                     f'{res} = OpLogicalAnd {bo} {c0} {ok}']
+            if restore:
+                out.append(f'OpStore {fired_var} {off}')
             continue
         out.append(l)
-    return done({'psr_water_sites': len(by_line)}, out)
+    return done({'psr_water_sites': len(by_line), 'psr_medium_restores': len(restore)}, out)
 
 
 if __name__ == '__main__':

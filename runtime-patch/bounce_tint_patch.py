@@ -203,9 +203,15 @@ def main():
                 f'{sp} = OpAccessChain {pf} {cbvar} %pqb_cvd %pqb_cns', f'{sv} = OpLoad {t_float} {sp}',
                 f'{s0} = OpFSub {t_float} {sv} %pqb_sbase', f'{s1} = OpFMul {t_float} {s0} %pqb_s100',
                 f'{s2} = OpExtInst {t_float} {glsl} FClamp {s1} %pqb_smin %pqb_smax',
-                f'{lum} = OpDot {t_float} {tcl0} %pqb_vlum', f'{lv} = OpCompositeConstruct {t_v3} {lum} {lum} {lum}',
-                f'{df} = OpFSub {t_v3} {tcl0} {lv}', f'{sd} = OpVectorTimesScalar {t_v3} {df} {s2}',
-                f'{ts} = OpFAdd {t_v3} {lv} {sd}',
+                # hue-safe saturation (2026-11-12): the strongest channel stays fixed, the others are raised to the power s
+                # relative to it, so repeated hits can never make a weaker channel overtake the strongest one. (The old
+                # Rec.709-luminance lerp pushed red and blue away from a green-dominated luminance, so stacked hits drifted
+                # cyan water to royal blue and other light to violet.) Neutral colours are unchanged.
+                f'{lum}x = OpCompositeExtract {t_float} {tcl0} 0', f'{lum}y = OpCompositeExtract {t_float} {tcl0} 1',
+                f'{lum}z = OpCompositeExtract {t_float} {tcl0} 2', f'{lum}a = OpExtInst {t_float} {glsl} FMax {lum}x {lum}y',
+                f'{lum} = OpExtInst {t_float} {glsl} FMax {lum}a {lum}z', f'{lv} = OpCompositeConstruct {t_v3} {lum} {lum} {lum}',
+                f'{df} = OpFDiv {t_v3} {tcl0} {lv}', f'{sd} = OpCompositeConstruct {t_v3} {s2} {s2} {s2}',
+                f'{sd}p = OpExtInst {t_v3} {glsl} Pow {df} {sd}', f'{ts} = OpFMul {t_v3} {sd}p {lv}',
                 f'{tx} = OpExtInst {t_v3} {glsl} FMax {ts} %pqb_veps', f'{tn} = OpExtInst {t_v3} {glsl} FMin {tx} %pqb_v1',
             ]
             if dist is not None:
@@ -301,7 +307,7 @@ def main():
         else:
             out.append(l)
     open(dst, 'w', encoding='utf-8').write('\n'.join(out))
-    print(json.dumps({'bounce_sites': len(sites), 'cache_sites': len(cache_lines), 'lines': [s[0] + 1 for s in sites]}))
+    print(json.dumps({'bounce_sites': len(sites), 'cache_sites': len(cache_lines), 'chain_sites': sum(1 for x in sites if x[3] is None), 'lines': [s[0] + 1 for s in sites]}))
 
 
 if __name__ == '__main__':

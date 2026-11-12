@@ -21,7 +21,7 @@ import net.minecraft.class_310;
  * rtx.viewDistance.noiseScale is above 20.0005, and the shipped code while it is exactly the shipped 20. ON
  * writes 20.001 (the fade noise scale, a difference nobody can see), OFF writes 20. The fix also keeps
  * rtx.enableTransmissionApproximationInIndirectRays at its shipped True, sets the first-bounce NEE cache off
- * (OFF restores the value the runtime started with), switches the glass-contact and water-quad changes inside
+ * while "Better Colored Glass GI" is on (OFF restores the value the runtime started with), switches the glass-contact and water-quad changes inside
  * the renderer jar and rebuilds the loaded terrain, so OFF is the shipped behaviour and the change shows at once.
  * The debug markers (red = glass on a shadow ray, green = glass on a bounce ray) need a telltale build of the DLL
  * and are off by default. Hotkeys: Numpad 1 fix on/off, Numpad 2 debug markers on/off, both disabled by the
@@ -36,8 +36,6 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static final String NEE_FIRST_BOUNCE = "rtx.neeCache.enableOnFirstBounce";
     /** Cache NEE shadow rays use the INDIRECT shadow mask; alpha-blended instances are only in it when this is on. */
     private static final String INDIRECT_ALPHA_SHADOWS = "rtx.enableIndirectAlphaBlendShadows";
-    /** The old workaround for untinted emissive light (cache off on the first bounce). Off while the mask fix is tested. */
-    private static final boolean DISABLE_FIRST_BOUNCE_CACHE = false;
 
     static {
         // The renderer mod's server light snapshot (ServerLightSnapshot) can throw 'published light snapshot is
@@ -59,6 +57,8 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static volatile boolean waterUnderside = false;
     private static volatile boolean waterNudge = false;
     private static volatile boolean glassGap = true;
+    /** "Better Colored Glass GI": with the fix on, the NEE cache is switched off on the first bounce (see NEE_FIRST_BOUNCE). */
+    private static volatile boolean betterGlassGi = false;
     private static volatile int glassDepthPercent = 100;
     private static volatile int waterBluePercent = 100;
     private static volatile int sunSizePercent = 400;
@@ -203,6 +203,19 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         } catch (Throwable t) {
             // renderer jar without the helper: nothing to apply
         }
+    }
+
+    /** Better Colored Glass GI: ON writes rtx.neeCache.enableOnFirstBounce = False, so emissive light on the first bounce (sea lanterns, lamps) crosses glass and takes its colour. */
+    public static boolean isBetterGlassGi() {
+        return betterGlassGi;
+    }
+
+    public static void setBetterGlassGi(boolean on) {
+        if (on == betterGlassGi) {
+            return;
+        }
+        betterGlassGi = on;
+        optionApplied = false;   // the tick handler writes the runtime options again
     }
 
     /** Separate glass-like blocks that touch each other (other colours of glass, water) by a hairline of air. */
@@ -421,7 +434,7 @@ public final class TranslucentFixToggle implements ClientModInitializer {
                 indirectAlphaDefault = readResolved(INDIRECT_ALPHA_SHADOWS);
             }
             int d = (Integer) m.invoke(null, NEE_FIRST_BOUNCE,
-                    on && DISABLE_FIRST_BOUNCE_CACHE ? "False" : neeFirstBounceDefault);
+                    on && betterGlassGi ? "False" : neeFirstBounceDefault);
             int e = (Integer) m.invoke(null, INDIRECT_ALPHA_SHADOWS, on ? "True" : indirectAlphaDefault);
             boolean ok = a == 0 && b == 0 && c == 0 && d == 0 && e == 0;
             if (ok) {

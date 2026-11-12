@@ -135,10 +135,58 @@ Attempts, in order:
    that still has layers behind it, which then lose their reflection, and a water wall drawn as a visible surface uses the bluer non-replacement path.
 3. Later entering interface AND horizontal (`|N.y| > 0.7`, N = the value normalised and passed to `Refract`): fixed the stacks, but looking UP through glass at water above, the
    ray enters the water through its bottom face, which ended the replacement and drew the water too blue.
-4. Current: later entering interface whose normal points UP (`N.y > 0.7`, signed). The first interface, walls, panes and bottom faces stay as shipped.
+4. Later entering interface whose normal points UP (`N.y > 0.7`, signed). The first interface, walls, panes and bottom faces stay as shipped.
+5. Current (v5): rule 4 plus a medium-state restore. The sample call flips the state's inside-medium flag by reference, and after the continuation decision the loop records the
+   medium it just entered (`mediumMaterialIndex`) whether or not the ray continues (`geometry_resolver.slangh`, "Set the material medium index if a medium was entered or exited").
+   Stopping the replacement at the water top therefore left the pixel marked as already INSIDE the water, and the water top was shaded as seen from underneath (total internal
+   reflection of the sky: a royal-blue water top under a glass roof, only for water behind another see-through layer). The patch stores "the rule fired in this iteration" in a
+   Function bool and, just before that bookkeeping, puts the flag bit back to its pre-interface value. The bookkeeping is found structurally (`OpLogicalNot old`, branch, load of
+   the flags ushort, `& 2`), in all 108 modules (some have it more than 4000 lines after the rule, so the search spans the module). Per module it is all or nothing, and
+   `build_runtime.py` prints "medium state restored at N of them".
 
 Patch: `runtime-patch/psr_water_patch.py`, option `--psr-water` of `build_runtime.py` (in the installer's DLL arguments). Counter, normal and the option read are found
 structurally per module (unique in all 108); each patched module is validated with spirv-val. Gate: `ViewDistanceArgs.noiseScale > 20.0005` (Master Switch).
 Assumption: the interface normal is in a space where up is +Y (Minecraft); if not, stacks behave as stock.
 
-Related observation: with PSR reflection and transmission switched off, water looks very blue. That is stock behaviour (not our patches); the cause is not isolated.
+Related observation: with PSR reflection and transmission switched off in Alt+X, water looks very blue. That is stock behaviour; the medium-state bug above does not explain it
+(there the replacement never starts), and the cause is not isolated.
+
+## Water seen by bounce rays (2026-11)
+
+Symptom: a water column reflected by a water or glass surface and seen through glass was royal blue (cyan when looked at directly), and the bounce light under water was blue.
+
+Mechanism (read from `resolve.slangh` and the compiled indirect-ray modules): with `rtx.enableTransmissionApproximationInIndirectRays` on (shipped; the mod keeps it), the indirect-ray
+resolve does not return a hit for a translucent surface. It multiplies the throughput by the surface colour and sends the ray straight on ("translucent objects hit by indirect rays will
+not alter ray direction"). A reflected ray that meets a water column flies through it, out of its top and into the sky: a tinted window, no refraction, no total internal reflection,
+no absorption by depth. Stock Remix hides this because the same water seen directly is handled by the primary-ray replacement with distance based absorption.
+
+Fix: `runtime-patch/water_reflect_patch.py` (`--water-reflect`) makes the approximation false for hits on WATER only: both tests of resolveMode bit 6
+(`resolveModeTranslucencyTransmissionApprox`) ahead of the per-hit colour multiply become `approx && !(live && isWater)`. The water is then an ordinary hit and the integrator
+refracts, reflects, tracks the medium and absorbs by distance, as stock does with the option off. Glass keeps the approximation. 152 indirect-ray modules (those that read the option;
+the primary-ray modules have the mode constant false) are patched.
+
+Detecting water: `MemoryPolymorphicSurfaceMaterial` is `uvec4 data[4]`; for a translucent material the refractive index is a half float in the high 16 bits of `data[1].y`
+(`UnpackHalf2x16(...).y`) and the measurement distance in the high 16 bits of `data[0].w`. The mod's water has IOR 1.33, every glass-like material 1.52, so `1.1 < IOR < 1.425` is
+water. **Versions 1 and 2 tested the animated-water surface flag** (bit 24 of surface word 3), which Remix sets only for instances in the AnimatedWater category (or textures listed in
+`rtx.animatedWaterTextures`); this mod does neither, so those versions never fired and three user tests showed no change. Lesson: before building on a gate, find who sets it.
+The earlier "water gate" in `bounce_tint_patch.py` used the same dead flag and was removed.
+
+## Second set of shadows on subsurface materials (2026-11)
+
+Symptom: seen through the surface of water, the floor showed a second, lighter, shifted set of shadows, about twice as refracted as it should be; from under the water only the right set.
+Only blocks with a subsurface scattering profile (sand, sandstone, snow and similar, from the RTX Remix Materials pack) showed it, only with RTXDI on, and "Enable Diffusion Profile"
+in Alt+X removed it.
+
+Mechanism (`rtxcr_material.slangh`, `evalSssDiffusionProfile`, inlined into integrate_direct): each diffusion-profile sample point is lit with a light taken from the RTXDI reservoir of
+`samplePixelCoordinate`, the screen pixel the sample's REAL world position projects to. For a pixel reached through water or glass (primary surface replacement) that pixel shows
+another spot, so the lighting followed that spot's shadows. Stock only falls back to ordinary light selection when the sample projects off screen.
+
+Fix: `runtime-patch/sss_psr_patch.py` (`--sss-psr`): the inside-screen test also requires that `GeometryFlags.performPSTR | performPSRR` (bits 7 and 8) are clear, live-gated. Two modules
+(integrate_direct, ray-generation and compute variants), four sites.
+
+## Better Colored Glass GI (2026-11)
+
+A menu option (off by default) that, while the master switch is on, writes `rtx.neeCache.enableOnFirstBounce = False` through the Remix bridge (OFF or master switch off restores the value the
+runtime started with). The NEE cache samples emissive blocks on the first bounce with a visibility ray that does not see glass, so lamp and sea-lantern light can stay white through coloured glass;
+with the cache off on the first bounce that light is traced through the glass and takes its colour, at some cost in speed. It lives in `TranslucentFixToggle` (state and option write) and
+`LightTransformSettings` (menu entry).
