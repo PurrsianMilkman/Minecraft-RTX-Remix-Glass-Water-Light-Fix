@@ -10,21 +10,13 @@ below. Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and
 
 ## Easy install (one file)
 
-Download **`Make-Patched-RTX-Remix-Glass-Fix.bat`** from the Releases page (one file, no zip). Windows may warn that it is from the internet: it is a plain
-text batch file, open it in Notepad to read it, then choose "Run anyway".
-**Put NVIDIA's original mod jar (any file name) in the same folder as the `.bat` and double-click the `.bat`.** It looks only at the jars in that folder,
-nowhere else on your PC, and nothing of the mod is downloaded. A jar is recognised by its **hash**, not its name: a 0.1.0 jar is patched with the 0.1.0 build, a
-0.1.1 jar with the 0.1.1 build, and a jar that matches neither is refused with a message (an already patched jar, another version, a damaged download). Get the
-original from NVIDIA's [releases page](https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases). It writes **one jar** next to the `.bat`, named like the
-original with **`-LightFix`** added (for example `rtx-remix-renderer-0.1.1-202611060211-7d2ba9f-LightFix.jar`).
-Close Minecraft, delete the original `rtx-remix-renderer` jar from your profile's `mods` folder, and copy the `-LightFix` jar in
-(the companion mod is merged into it, so there is nothing else to install).
-The installer needs only Windows 10/11 and about 4.5 GB of free disk space. The `.bat` carries our scripts and the changed classes inside itself
-(about 170 KB); it unpacks them into a `RemixGlassFix-files` folder beside it, downloads a portable Python and the SPIR-V tools into that folder
-(pinned versions, SHA-256 checked, the only downloads), and you can delete that folder afterwards. Nothing of NVIDIA's is inside the `.bat`.
-Supported: NVIDIA's **0.1.1 (latest)** and 0.1.0. The first start with the new jar is slower: the mod unpacks its runtime again
-(the jar's version carries a `+glassfix1` suffix for that). `tools/make_release.py --bat` builds the single-file installer; a zip version
-(`Make-Patched-Mod.bat` inside `RemixGlassFix-Installer.zip`) is built from the same sources. The manual build below is for developers.
+To install and use:
+
+1. Download the original mod from NVIDIA: https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases/download/v0.1.1/rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar
+2. Download the patch: https://github.com/PurrsianMilkman/Minecraft-RTX-Remix-Glass-Water-Light-Fix/releases/download/installer-v1.0.0-rc1/Make-Patched-RTX-Remix-Glass-Fix.bat
+3. Put both the jar file and the bat file in the same folder and run the bat file. The bat file will give you the patched jar file.
+4. Put the patched jar file in your mods folder, just like other mods.
+5. Remove the original jar file if it is still there.
 
 ## Status (honest version)
 
