@@ -24,6 +24,9 @@ public final class LightTransformSettings {
         list.add(RtxSetting.ofBool("light.fix", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.fix", "rtxremix.setting.light.fix.tip",
                 true, () -> get(toggle, "isFixEnabled", true), v -> set(toggle, "setFixEnabled", v)));
+        list.add(RtxSetting.ofBool("light.betterGi", SettingGroup.LIGHT_TRANSFORM,
+                "rtxremix.setting.light.betterGi", "rtxremix.setting.light.betterGi.tip",
+                true, () -> get(toggle, "isBetterGi", true), v -> set(toggle, "setBetterGi", v)));
         list.add(RtxSetting.ofBool("light.debugMarkers", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.debugMarkers", "rtxremix.setting.light.debugMarkers.tip",
                 false, () -> get(toggle, "isDiagnostic", false), v -> set(toggle, "setDiagnostic", v)));

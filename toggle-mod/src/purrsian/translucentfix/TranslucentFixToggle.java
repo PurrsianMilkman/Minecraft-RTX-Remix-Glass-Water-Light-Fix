@@ -31,6 +31,10 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static final String NOISE_SCALE = "rtx.viewDistance.noiseScale";
     private static final String FADE_MIN = "rtx.viewDistance.distanceFadeMin";
     private static final String TRANSMISSION_APPROX = "rtx.enableTransmissionApproximationInIndirectRays";
+    /** Better GI: Russian roulette ends paths early, which makes indirect light grow stronger the closer you get to a surface. */
+    private static final String RUSSIAN_ROULETTE = "rtx.enableRussianRoulette";
+    /** Better GI: how much a bounce ray's cone widens after an indirect BRDF sample (Remix default 0.05; 0.02 gives much cleaner GI). */
+    private static final String INDIRECT_SPREAD = "rtx.indirectRaySpreadAngleFactor";
     /** Cache NEE shadow rays use the INDIRECT shadow mask; alpha-blended instances are only in it when this is on. */
     private static final String INDIRECT_ALPHA_SHADOWS = "rtx.enableIndirectAlphaBlendShadows";
 
@@ -54,6 +58,8 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static volatile boolean waterUnderside = false;
     private static volatile boolean waterNudge = false;
     private static volatile boolean glassGap = true;
+    /** "Better GI" (on by default): with the fix on, Russian roulette is off and the indirect ray spread angle factor is 0.02. */
+    private static volatile boolean betterGi = true;
     private static volatile int glassDepthPercent = 100;
     private static volatile int waterBluePercent = 100;
     private static volatile int sunSizePercent = 400;
@@ -196,6 +202,19 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         } catch (Throwable t) {
             // renderer jar without the helper: nothing to apply
         }
+    }
+
+    /** Better GI: ON (with the master switch) turns Russian roulette off and sets rtx.indirectRaySpreadAngleFactor to 0.02; OFF restores Remix's own values (on, 0.05). */
+    public static boolean isBetterGi() {
+        return betterGi;
+    }
+
+    public static void setBetterGi(boolean on) {
+        if (on == betterGi) {
+            return;
+        }
+        betterGi = on;
+        optionApplied = false;   // the tick handler writes the runtime options again
     }
 
     /** Separate glass-like blocks that touch each other (other colours of glass, water) by a hairline of air. */
@@ -411,7 +430,11 @@ public final class TranslucentFixToggle implements ClientModInitializer {
                 indirectAlphaDefault = readResolved(INDIRECT_ALPHA_SHADOWS);
             }
             int e = (Integer) m.invoke(null, INDIRECT_ALPHA_SHADOWS, on ? "True" : indirectAlphaDefault);
-            boolean ok = a == 0 && b == 0 && c == 0 && e == 0;
+            // Better GI: the values are Remix's own defaults whenever the switch or the master switch is off, so OFF is the original rendering
+            boolean gi = on && betterGi;
+            int f = (Integer) m.invoke(null, RUSSIAN_ROULETTE, gi ? "False" : "True");
+            int g = (Integer) m.invoke(null, INDIRECT_SPREAD, gi ? "0.02" : "0.05");
+            boolean ok = a == 0 && b == 0 && c == 0 && e == 0 && f == 0 && g == 0;
             if (ok) {
                 System.out.println("[translucent-fix] options written: noiseScale " + desiredNoise() + " (runtime now " + readFloat(NOISE_SCALE)
                         + "), distanceFadeMin " + desiredFade() + " (runtime now " + readFloat(FADE_MIN) + ")");

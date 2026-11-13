@@ -204,3 +204,11 @@ removed the copy but also the noise reduction.)
 Fix: `runtime-patch/nee_reservoir_patch.py` (`--nee-reservoir`) multiplies the reservoir radiance by the visibility attenuation, live-gated (`noiseScale > 20.0005`, otherwise the shipped value).
 The attenuation vector is the one the shader multiplies into `diffuseLight` / `specularLight` (found structurally); the reservoir site is the `FDiv` by the pdf followed by the float16-max clamp. One
 module, one site (the ReSTIR GI variant of `integrate_nee`); validated with spirv-val. The menu switch that was briefly added as a workaround for this was removed again.
+
+## Better GI (2026-11)
+
+Menu option, on by default, active only while the master switch is on. The mod writes two Remix options through the bridge: `rtx.enableRussianRoulette = False` and
+`rtx.indirectRaySpreadAngleFactor = 0.02`. Russian roulette ends paths early at random and compensates by boosting the survivors; in practice indirect light then grows stronger the
+closer you get to a surface, because the termination probability depends on the path throughput. The spread angle factor (Remix default 0.05, range 0-1) widens a ray's cone after an indirect BRDF
+sample to prefilter the lobe; 0.02 gives visibly cleaner GI. With the option or the master switch off the mod writes Remix's own defaults (`True`, `0.05`), so OFF is the original rendering,
+whatever an earlier Alt+X session left in `rtx.conf`. A value pinned in `user.conf` outranks the mod's runtime writes, so keep both keys out of it.

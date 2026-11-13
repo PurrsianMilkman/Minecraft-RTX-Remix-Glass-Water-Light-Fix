@@ -38,6 +38,7 @@ To install and use:
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
 | Distant violet/blue skylight tint | Went away once the profile's config matched a stock instance (a main-profile setting, not our shaders); the exact setting was not isolated. A user.conf that pins `rtx.viewDistance.noiseScale` / `distanceFadeMin` silently disables the Master Switch: never save from the Alt+X menu |
 | Royal-blue water top under glass, and blue bounce light under water or in reflected water | **Confirmed fixed in game.** Two causes (items 9 and 10 below): the reflection patch left the ray marked as already inside the water, and bounce rays flew straight through water to the sky |
+| Better GI (Russian roulette off, indirect ray spread angle 0.02; on by default): GI no longer gets stronger up close | **Confirmed in game** |
 | Second, over-refracted set of shadows on sand, sandstone, snow (subsurface materials) seen through water | **Confirmed fixed in game** (item 11 below) |
 | With the primary-ray replacement switched off in Alt+X (PSR off), water drawn as an ordinary visible surface looks very blue | Stock Remix behaviour; not explained by the fixes above |
 
@@ -110,6 +111,7 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
 | Setting | Effect |
 |---|---|
 | Light Transform Mods (Master Switch) | Off = the shipped rendering exactly (shaders, geometry, options); sliders keep their values |
+| Better GI | On by default, with the master switch: turns Russian roulette off and sets the indirect ray spread angle factor to 0.02 (Remix: 0.05), so GI no longer gets stronger the closer you get and is cleaner. Off restores Remix's own values (on, 0.05) |
 | Glass Color Saturation | scales the saturation of glass tint for light (25-200%) |
 | Glass Pane Depth Effect | how strongly panes tint what you see (0-280%) |
 | Glass Block Depth | block tint strength; **applies after a resource reload or restart** (75-400%) |
