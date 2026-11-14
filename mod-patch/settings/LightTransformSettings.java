@@ -24,9 +24,9 @@ public final class LightTransformSettings {
         list.add(RtxSetting.ofBool("light.fix", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.fix", "rtxremix.setting.light.fix.tip",
                 true, () -> get(toggle, "isFixEnabled", true), v -> set(toggle, "setFixEnabled", v)));
-        list.add(RtxSetting.ofBool("light.betterGi", SettingGroup.LIGHT_TRANSFORM,
-                "rtxremix.setting.light.betterGi", "rtxremix.setting.light.betterGi.tip",
-                true, () -> get(toggle, "isBetterGi", true), v -> set(toggle, "setBetterGi", v)));
+        list.add(RtxSetting.ofInt("light.giReach", SettingGroup.LIGHT_TRANSFORM,
+                "rtxremix.setting.light.giReach", "rtxremix.setting.light.giReach.tip",
+                0, 3, 2, () -> getInt(toggle, "getGiReach", 2), v -> setInt(toggle, "setGiReach", v)));
         list.add(RtxSetting.ofBool("light.debugMarkers", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.debugMarkers", "rtxremix.setting.light.debugMarkers.tip",
                 false, () -> get(toggle, "isDiagnostic", false), v -> set(toggle, "setDiagnostic", v)));
@@ -57,7 +57,7 @@ public final class LightTransformSettings {
                 false, () -> get(toggle, "isWaterNudge", false), v -> set(toggle, "setWaterNudge", v)));
         list.add(RtxSetting.ofInt("light.sunSize", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.sunSize", "rtxremix.setting.light.sunSize.tip",
-                100, 2000, 400, () -> getInt(toggle, "getSunSize", 400), v -> setInt(toggle, "setSunSize", v))
+                100, 2000, 100, () -> getInt(toggle, "getSunSize", 100), v -> setInt(toggle, "setSunSize", v))
                 .withStep(50));
         list.add(RtxSetting.ofBool("light.hotkeys", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.hotkeys", "rtxremix.setting.light.hotkeys.tip",

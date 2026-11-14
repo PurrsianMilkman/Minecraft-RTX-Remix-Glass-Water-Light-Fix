@@ -31,18 +31,25 @@ gamma corrected by the runtime; `T` is clamped to >= 1/1024 before the log):
 
 ```
 s_i = frontFace ? -1 : +1          # raw hardware facing (OpRayQueryGetIntersectionFrontFaceKHR), not the view-flipped normal
-A  += k * s_i * sigma_i * t_i       # k = --k, 1.0 physical
-C  += k * s_i * sigma_i
+SIG += sigma_i                      # sum of the sigma of every translucent hit
+X   += k * s_i * t_i                # net path length inside translucent media (k = --k, 1.0 physical)
+N   += k * s_i                      # net entries minus exits
+n   += 1                            # hit count
 per-hit factor = 1                  # the old constant tint is removed
-after the loop:  attenuation *= exp(-(A + max(-C, 0) * min(tMax, 1024)))
+after the loop:  attenuation *= min(exp(-(SIG / max(n,1)) * (X + max(-N, 0) * min(tMax, 1024))), 1)
 ```
 
+(Until 2026-11-14 the sum was `A += k * s_i * sigma_i * t_i`, `C += k * s_i * sigma_i`, with every hit's own sigma. Ray-query candidates arrive
+in arbitrary order and an entry face and its exit face can carry different material colours, so some channels got negative optical depth and the
+sunlit floor under coloured glass showed the complement colour (magenta under green glass). Only the sun showed it, because its `tMax` cap is huge.
+Taking the mean sigma times a path length that is common to all channels cannot invert the hue. For a single crossing of one glass it equals the old
+formula; stacks of different colours are averaged, which matches the old result when the layers are about equally thick.)
+
 * A paired entry/exit at t_in < t_out gives sigma * (t_out - t_in).
-* A ray that **starts inside** a medium sees an unpaired exit: A = sigma * t_exit, which is correct with no extra term.
-* A ray that **ends inside** sees an unpaired entry: A = -sigma * t_in and C = -sigma, so the `max(-C,0) * tMax` term adds the rest.
+* A ray that **starts inside** a medium sees an unpaired exit: X = t_exit, which is correct with no extra term.
+* A ray that **ends inside** sees an unpaired entry: X = -t_in and N = -1, so the `max(-N,0) * tMax` term adds the rest.
   The distant sun sits ~1e5 away, hence the `min(tMax, 1024)` cap (it keeps a missing face from producing inf or NaN).
-* Mixed media work because each hit carries its own sigma. Light that starts inside glass and ends inside glass without any crossing
-  is the one uncovered case.
+* Light that starts inside glass and ends inside glass without any crossing is the one uncovered case.
 * Coplanar duplicate surfaces cancel exactly, which is why the water's reversed top quad has to go.
 * Fault sign: if front/back polarity is wrong, paired crossings give `exp(+sigma L)`, i.e. *brighter* behind glass than without it.
 
@@ -81,9 +88,13 @@ the fade end. The fade then lerps to untinted sky at 100%. The patch makes the g
 
 ## Later additions (2026-11)
 
-* **Live channels.** The patched shaders read `RaytraceArgs.viewDistanceArgs`: `noiseScale` (shipped 20) is the on/off flag (`> 20.0005`) and carries the
-  saturation (`20.001 + 0.0001 * percent`), `distanceFadeMin` (shipped 358.4) carries the pane depth (`358.4 + 0.00001 * percent`). A value in
-  `user.conf` outranks runtime writes, so keep both keys out of it. The companion mod re-reads both once a second and rewrites them on drift.
+* **Live channel.** The patched shaders read ONE value, `RaytraceArgs.viewDistanceArgs.noiseScale` (shipped 20, read by nothing else): `20 + m / 2^19` with
+  `m = 512 + 64 * saturation% + p`, `p = pane depth% / 5` (0..63, pane depth K = p * 0.05). Every such value is an exact float. OFF is exactly 20, ON is
+  anything above 20.0005. The shaders decode the saturation as `(noiseScale - 20.0009765625) * 81.92` (two instructions: the patched modules have almost no
+  size slack; the pane step adds at most 0.009 to it) and the pane depth with integer operations (`(m - 512) & 63`). A value in `user.conf` outranks
+  runtime writes, so keep the key out of it. Two earlier channels failed: `distanceFadeMin` is rewritten by the automatic view-distance layer whenever the
+  render distance is below 32 chunks (pane depth silently died), and `hairCardRoughnessScale` is multiplied into the translucent colour scale by most
+  stock shaders (glass turned white). Check every reader of an option before using it as a channel.
 * **Brightness lift is saturation weighted.** `scale = 1 + (CLEAR / max - 1) * (1 - min / max)` in `shadow_ray_patch.py` and `bounce_tint_patch.py`.
   The unweighted version (`scale = max(CLEAR / max, 1)`) turned black glass (linear 0.0097) into 0.9 per 0.35 m, i.e. almost clear.
 * **Primary-ray miss branch** (`gbuf_patch.py`): a ray that hits nothing is treated as inside an infinite medium, so any absorbing medium gives black.
@@ -95,7 +106,8 @@ the fade end. The fade then lerps to untinted sky at 100%. The patch makes the g
 * **Material constants.** `HookMeasure.java` patches the two `ldc 0.35f` glass measurement distances and the water blue transmittance in
   `BlockTextureManager`; those materials are built once per resource load, so these settings apply after a reload or restart.
 * **Sun size.** `LightManager.updateDistantLight` receives the sun (0.53 deg) and moon (0.52 deg) diameters as a parameter; `HookLight.java`
-  scales them. The real sun gives a penumbra of about 1 cm per metre, which looks razor sharp at block scale.
+  scales them. The real sun gives a penumbra of about 1 cm per metre, which looks razor sharp at block scale. The slider defaults to 100% (the shipped
+  size); larger values give softer shadow edges and, with the denoiser, a smearier sun.
 * **Settings UI.** `KeyBindButton` extends `ButtonWidget` and uses the game's own `KeyBinding` objects (click, press a key); `patch_jar.py` copies each helper
   class as exactly one class file, so helper classes must not have nested classes or enums (lambdas are fine).
 * **Building shaders without `spirv-val`.** `build_runtime.py` runs without it and only checks a disassembly round trip; a type or logic error would not be
@@ -205,10 +217,31 @@ Fix: `runtime-patch/nee_reservoir_patch.py` (`--nee-reservoir`) multiplies the r
 The attenuation vector is the one the shader multiplies into `diffuseLight` / `specularLight` (found structurally); the reservoir site is the `FDiv` by the pdf followed by the float16-max clamp. One
 module, one site (the ReSTIR GI variant of `integrate_nee`); validated with spirv-val. The menu switch that was briefly added as a workaround for this was removed again.
 
-## Better GI (2026-11)
+## GI Spread and reach (2026-11)
 
-Menu option, on by default, active only while the master switch is on. The mod writes two Remix options through the bridge: `rtx.enableRussianRoulette = False` and
-`rtx.indirectRaySpreadAngleFactor = 0.02`. Russian roulette ends paths early at random and compensates by boosting the survivors; in practice indirect light then grows stronger the
-closer you get to a surface, because the termination probability depends on the path throughput. The spread angle factor (Remix default 0.05, range 0-1) widens a ray's cone after an indirect BRDF
-sample to prefilter the lobe; 0.02 gives visibly cleaner GI. With the option or the master switch off the mod writes Remix's own defaults (`True`, `0.05`), so OFF is the original rendering,
-whatever an earlier Alt+X session left in `rtx.conf`. A value pinned in `user.conf` outranks the mod's runtime writes, so keep both keys out of it.
+A menu button (integer setting 0..3 shown by `CycleButton`, a `ButtonWidget` that steps the value and wraps; `LightTransformUi` uses it instead of a slider for `light.giReach`, default 2) that, with the
+master switch on, writes two Remix options through the bridge:
+
+| Level | `rtx.enableRussianRoulette` | `rtx.indirectRaySpreadAngleFactor` |
+|---|---|---|
+| Off (0) | True (Remix) | 0.05 (Remix) |
+| Low (1) | False | 0.05 |
+| Medium (2, default) | False | 0.025 |
+| High (3) | False | 0.0 |
+
+Russian roulette ends paths early at random and compensates by boosting the survivors; in practice indirect light then grows stronger the closer you get to a surface, because the termination
+probability depends on the path throughput. The spread angle factor (Remix default 0.05, range 0-1) widens a ray's cone after an indirect BRDF sample to prefilter the lobe; smaller values keep
+the lobe sharper. With the setting at Off, or the master switch off, the mod writes Remix's own defaults, so Off is the original rendering whatever an earlier Alt+X session left in `rtx.conf`.
+A value pinned in `user.conf` outranks the mod's runtime writes, so keep both keys out of it. This replaced the first version, an on/off "Better GI" (Russian roulette off and 0.02).
+
+## Bounce limit for water (2026-11)
+
+Because `water_reflect_patch` makes water a real surface for bounce rays, a path through a water column refracts in, may reflect inside it and refracts out, and glass layers add more. With Remix's default
+`rtx.pathMaxBounces = 4` such paths end before they reach the sky or a light and the reflection comes out **black** (seen after a settings reset removed an Alt+X-saved `pathMaxBounces = 8`). The mod
+therefore writes `rtx.pathMaxBounces = 8` while the master switch is on and Remix's own 4 when it is off, so the fix does not depend on a hand-edited `user.conf`. A value pinned in `user.conf` outranks it.
+
+## Indirect integration mode (2026-11)
+
+Every patch here was built and tested with `rtx.integrateIndirectMode = 1` (ReSTIR GI); the NEE reservoir fix exists only in the ReSTIR GI variant of `integrate_nee`. Remix's own default is 3 (SHaRC, a
+spatially hashed radiance cache whose paths stop early by looking up stored radiance), which is what a profile without that line gets. After a settings reset the reflection of water seen through glass
+went black in mode 3. The mod therefore writes `rtx.integrateIndirectMode = 1` while the master switch is on and Remix's 3 when it is off, next to `rtx.pathMaxBounces = 8` / 4. A value pinned in `user.conf` outranks both.

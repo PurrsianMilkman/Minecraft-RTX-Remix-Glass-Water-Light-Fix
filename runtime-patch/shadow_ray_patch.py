@@ -27,7 +27,7 @@ VD_MEMBER = 8        # RaytraceArgs.viewDistanceArgs
 NOISE_MEMBER = 4     # ViewDistanceArgs.noiseScale
 NOISE_SCALE_ON_ABOVE = 20.0005
 # --sat-slider (with --live-flag): glass colour saturation 0.25..2.0 read live from the same option,
-# noiseScale = 20.001 + 0.01 * saturation (so 20.011 = 100%).
+# noiseScale = 20 + m / 2^19 with m = 512 + 64 * saturation% + pane depth step (m = 0, noiseScale exactly 20, is OFF).
 SAT_SLIDER = '--sat-slider' in sys.argv
 # --telltale with --live-flag: the red also needs ViewDistanceArgs.distanceFadeMin (rtx.viewDistance.distanceFadeMin,
 # shipped value 358.4 here) above this, so a second key can switch the red off while the fix stays on.
@@ -205,6 +205,7 @@ def main():
         f'{C_1} = OpConstant {t_float} 1',
         f'{C_1024} = OpConstant {t_float} 1024',
         f'{C_eps} = OpConstant {t_float} 0.0009765625',
+        f'%pq_cz0 = OpConstant {t_float} 0',
         f'{V_0} = OpConstantNull {t_v3}',
         f'{V_1} = OpConstantComposite {t_v3} {C_1} {C_1} {C_1}',
         f'{V_eps} = OpConstantComposite {t_v3} {C_eps} {C_eps} {C_eps}',
@@ -245,7 +246,7 @@ def main():
                                 f'%pq_cthr2 = OpConstant {t_float} {FADE_MIN_ON_ABOVE!r}']
             flag_ok = True
             if SAT_SLIDER:
-                globals_new += [f'%pq_sbase = OpConstant {t_float} 20.001', f'%pq_s100 = OpConstant {t_float} 100',
+                globals_new += [f'%pq_sbase = OpConstant {t_float} 20.0009765625', f'%pq_s8192 = OpConstant {t_float} 81.92',
                                 f'%pq_smin = OpConstant {t_float} 0.25', f'%pq_smax = OpConstant {t_float} 2',
                                 f'%pq_c02126 = OpConstant {t_float} 0.2126', f'%pq_c07152 = OpConstant {t_float} 0.7152',
                                 f'%pq_c00722 = OpConstant {t_float} 0.0722',
@@ -273,7 +274,7 @@ def main():
 
     loop_vars = {}
     for h, ss in by_loop.items():
-        A, C = nid('A'), nid('C')
+        A, C = nid('A'), nid('C')   # A = sum of the sigma of every translucent hit; C = (sum of sign*t, sum of sign, hit count)
         loop_vars[h] = (A, C)
         # declare in first block of enclosing function
         fi = max(i for i in range(0, h) if re.match(r'\s*%\S+ = OpFunction ', lines[i]))
@@ -293,14 +294,26 @@ def main():
         tptr = ss[0]['tmax_ptr']
         a, c, nc, mx, tm, tc, ms, sm, ng, e, e1, r0, r1 = [nid(x) for x in
             ('a', 'c', 'nc', 'mx', 'tm', 'tc', 'ms', 'sm', 'ng', 'e', 'e1', 'r0', 'r1')]
+        # One sigma per ray: the MEAN sigma of its translucent hits times the net path length inside translucent media
+        #   absorb = mean(sigma) * (sum(sign * t) + max(-sum(sign), 0) * min(tmax, 1024)).
+        # (The hit order of a ray query is arbitrary, so pairing an exit face with "its" entry face is not possible; with the old
+        # per-hit  sum(sigma_i * sign_i * t_i)  an entry and an exit face of different colour left some channels with negative
+        # optical depth: a shadow in the complement of the glass colour. Here the length is common to all channels, so the
+        # shadow can only be lighter or darker in the hue of the glass.)
+        cx, cy, cz, nn, ni, sr = [nid(x) for x in ('cx', 'cy', 'cz', 'nn', 'ni', 'sr')]
         code = [f'{a} = OpLoad {t_v3} {A}', f'{c} = OpLoad {t_v3} {C}',
-                f'{nc} = OpFNegate {t_v3} {c}', f'{mx} = OpExtInst {t_v3} {glsl} FMax {nc} {V_0}']
+                f'{cx} = OpCompositeExtract {t_float} {c} 0', f'{cy} = OpCompositeExtract {t_float} {c} 1',
+                f'{cz} = OpCompositeExtract {t_float} {c} 2',
+                f'{nn} = OpExtInst {t_float} {glsl} FMax {cz} {C_1}', f'{ni} = OpFDiv {t_float} {C_1} {nn}',
+                f'{sr} = OpVectorTimesScalar {t_v3} {a} {ni}',
+                f'{nc} = OpFNegate {t_float} {cy}', f'{mx} = OpExtInst {t_float} {glsl} FMax {nc} %pq_cz0']
         if tptr:
             code += [f'{tm} = OpLoad {t_float} {tptr}', f'{tc} = OpExtInst {t_float} {glsl} FMin {tm} {C_1024}']
         else:
             tc = C_1024
-        code += [f'{ms} = OpVectorTimesScalar {t_v3} {mx} {tc}', f'{sm} = OpFAdd {t_v3} {a} {ms}',
-                 f'{ng} = OpFNegate {t_v3} {sm}', f'{e} = OpExtInst {t_v3} {glsl} Exp {ng}',
+        sf, ab = nid('sf'), nid('ab')
+        code += [f'{ms} = OpFMul {t_float} {mx} {tc}', f'{sf} = OpFAdd {t_float} {cx} {ms}',
+                 f'{ab} = OpVectorTimesScalar {t_v3} {sr} {sf}', f'{ng} = OpFNegate {t_v3} {ab}', f'{e} = OpExtInst {t_v3} {glsl} Exp {ng}',
                  f'{e1} = OpExtInst {t_v3} {glsl} FMin {e} {V_1}']
         if telltale:
             # positive control: any thick translucent candidate on this ray turns the light pure red
@@ -329,7 +342,9 @@ def main():
                     'Tc0', 'sp', 'sv', 's0', 's1', 's2', 'lum', 'lv', 'df', 'sd', 'ts', 'tx', 'tn', 'isg2')]
                 pre = [f'{tcl0} = OpExtInst {t_v3} {glsl} FMax {s["T"]} {V_eps}',
                        f'{sp} = OpAccessChain {pf} {cbvar} %pq_cvd %pq_cns', f'{sv} = OpLoad {t_float} {sp}',
-                       f'{s0} = OpFSub {t_float} {sv} %pq_sbase', f'{s1} = OpFMul {t_float} {s0} %pq_s100',
+                       # noiseScale = 20 + m / 2^19, m = 512 + 64 * saturation% + pane depth step p (see gbuf_patch.py):
+                       # (noiseScale - 20 - 512/2^19) * 2^19 / 64 / 100 = saturation / 100 + p * 0.00015625 (p <= 56: error under 0.009)
+                       f'{s0} = OpFSub {t_float} {sv} %pq_sbase', f'{s1} = OpFMul {t_float} {s0} %pq_s8192',
                        f'{s2} = OpExtInst {t_float} {glsl} FClamp {s1} %pq_smin %pq_smax',
                        # hue-safe saturation (2026-11-12), see bounce_tint_patch.py: strongest channel fixed, others ^s
                        f'{lum}x = OpCompositeExtract {t_float} {tcl0} 0', f'{lum}y = OpCompositeExtract {t_float} {tcl0} 1',
@@ -371,28 +386,29 @@ def main():
                 ]
                 operand = tsel
             if LIVE:
-                fl, fid = flag()
+                fl_t, fid_t = flag()
                 osel = nid('lsel')
-                pre = fl + pre + [f'{osel} = OpSelect {t_v3} {fid} {operand} {s["T"]}']
+                pre = fl_t + pre + [f'{osel} = OpSelect {t_v3} {fid_t} {operand} {s["T"]}']
                 operand = osel
             ins_after.setdefault(s['log_line'] - 1, []).extend(pre)
             replace[s['log_line']] = re.sub(re.escape(s['T']) + r'\s*$', operand, ll)
             t, ff, sg, st, a0, a1, a2, c0, c1, c2 = [nid(x) for x in
                 ('t', 'ff', 'sg', 'st', 'a0', 'a1', 'a2', 'c0', 'c1', 'c2')]
-            fl, fid = flag()
+            fl, fid = ([], fid_t) if LIVE and flag_ok else flag()   # the tint block above already loaded the live flag at this site
             a2g, c2g = nid('a2g'), nid('c2g')
             sg0 = sg
+            vc = nid('vc')
             ins_after.setdefault(s['sig_line'], []).extend(fl + [
                 f'{t} = OpRayQueryGetIntersectionTKHR {t_float} {s["rq"]} {uint0}',
                 f'{ff} = OpRayQueryGetIntersectionFrontFaceKHR {t_bool} {s["rq"]} {uint0}',
                 f'{sg0} = OpSelect {t_float} {ff} {C_km1} {C_k1}',
-            ] + [
                 f'{st} = OpFMul {t_float} {sg} {t}',
-                f'{a0} = OpLoad {t_v3} {A}', f'{a1} = OpVectorTimesScalar {t_v3} {s["sig"]} {st}',
-                f'{a2} = OpFAdd {t_v3} {a0} {a1}'] + ([f'{a2g} = OpSelect {t_v3} {fid} {a2} {a0}'] if LIVE else []) + [
+                f'{vc} = OpCompositeConstruct {t_v3} {st} {sg} {C_1}',
+                f'{a0} = OpLoad {t_v3} {A}', f'{a2} = OpFAdd {t_v3} {a0} {s["sig"]}'] + (
+                    [f'{a2g} = OpSelect {t_v3} {fid} {a2} {a0}'] if LIVE else []) + [
                 f'OpStore {A} {a2g if LIVE else a2}',
-                f'{c0} = OpLoad {t_v3} {C}', f'{c1} = OpVectorTimesScalar {t_v3} {s["sig"]} {sg}',
-                f'{c2} = OpFAdd {t_v3} {c0} {c1}'] + ([f'{c2g} = OpSelect {t_v3} {fid} {c2} {c0}'] if LIVE else []) + [
+                f'{c0} = OpLoad {t_v3} {C}', f'{c2} = OpFAdd {t_v3} {c0} {vc}'] + (
+                    [f'{c2g} = OpSelect {t_v3} {fid} {c2} {c0}'] if LIVE else []) + [
                 f'OpStore {C} {c2g if LIVE else c2}',
             ])
             if LIVE:

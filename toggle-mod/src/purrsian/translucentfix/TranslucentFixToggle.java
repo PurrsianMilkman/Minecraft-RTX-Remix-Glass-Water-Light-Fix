@@ -29,11 +29,12 @@ import net.minecraft.class_310;
  */
 public final class TranslucentFixToggle implements ClientModInitializer {
     private static final String NOISE_SCALE = "rtx.viewDistance.noiseScale";
-    private static final String FADE_MIN = "rtx.viewDistance.distanceFadeMin";
     private static final String TRANSMISSION_APPROX = "rtx.enableTransmissionApproximationInIndirectRays";
-    /** Better GI: Russian roulette ends paths early, which makes indirect light grow stronger the closer you get to a surface. */
+    /** Water is a real surface for bounce rays (water_reflect patch): a path through a water column refracts in, may reflect inside and refracts out, so it needs more bounces than Remix's default 4 or the reflection ends black. */
+    private static final String PATH_MAX_BOUNCES = "rtx.pathMaxBounces";
+    /** GI Spread and reach: Russian roulette ends paths early, which makes indirect light grow stronger the closer you get to a surface. */
     private static final String RUSSIAN_ROULETTE = "rtx.enableRussianRoulette";
-    /** Better GI: how much a bounce ray's cone widens after an indirect BRDF sample (Remix default 0.05; 0.02 gives much cleaner GI). */
+    /** GI Spread and reach: how much a bounce ray's cone widens after an indirect BRDF sample (Remix default 0.05; 0.02 gives much cleaner GI). */
     private static final String INDIRECT_SPREAD = "rtx.indirectRaySpreadAngleFactor";
     /** Cache NEE shadow rays use the INDIRECT shadow mask; alpha-blended instances are only in it when this is on. */
     private static final String INDIRECT_ALPHA_SHADOWS = "rtx.enableIndirectAlphaBlendShadows";
@@ -58,11 +59,11 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static volatile boolean waterUnderside = false;
     private static volatile boolean waterNudge = false;
     private static volatile boolean glassGap = true;
-    /** "Better GI" (on by default): with the fix on, Russian roulette is off and the indirect ray spread angle factor is 0.02. */
-    private static volatile boolean betterGi = true;
+    /** "GI Spread and reach": 0 Off, 1 Low, 2 Medium (default), 3 High (see writeOptions). */
+    private static volatile int giReach = 2;
     private static volatile int glassDepthPercent = 100;
     private static volatile int waterBluePercent = 100;
-    private static volatile int sunSizePercent = 400;
+    private static volatile int sunSizePercent = 100;
     private static volatile boolean optionApplied;
     private static volatile boolean rebuildPending;
     private static String indirectAlphaDefault;
@@ -204,16 +205,20 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         }
     }
 
-    /** Better GI: ON (with the master switch) turns Russian roulette off and sets rtx.indirectRaySpreadAngleFactor to 0.02; OFF restores Remix's own values (on, 0.05). */
-    public static boolean isBetterGi() {
-        return betterGi;
+    /**
+     * GI Spread and reach (with the master switch on): 0 Off = Remix's own values (Russian roulette on, spread 0.05); 1 Low = Russian roulette off,
+     * spread 0.05; 2 Medium = Russian roulette off, spread 0.025; 3 High = Russian roulette off, spread 0.0.
+     */
+    public static int getGiReach() {
+        return giReach;
     }
 
-    public static void setBetterGi(boolean on) {
-        if (on == betterGi) {
+    public static void setGiReach(int level) {
+        int l = Math.max(0, Math.min(3, level));
+        if (l == giReach) {
             return;
         }
-        betterGi = on;
+        giReach = l;
         optionApplied = false;   // the tick handler writes the runtime options again
     }
 
@@ -356,15 +361,19 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         return Class.forName(name, true, TranslucentFixToggle.class.getClassLoader());
     }
 
-    /** The value the shaders' live flag and saturation are read from: ON 20.001 + 0.0001 * saturation%, OFF exactly the shipped 20. */
+    /**
+     * The one value the patched shaders read the fix state from (rtx.viewDistance.noiseScale, which nothing else uses):
+     * OFF exactly the shipped 20; ON 20 + m / 2^19 with m = 512 + 64 * saturation% + p, p = pane depth step (K = p * 0.05,
+     * K = percent / 100, so p = percent / 5, at most 63). Every such value is exactly representable as a float.
+     */
     private static String desiredNoise() {
-        return enabled ? String.format(java.util.Locale.ROOT, "%.5f", 20.001 + 0.0001 * saturationPercent) : "20";
-    }
-
-    /** distanceFadeMin: ON 358.4 + 0.00001 * pane depth%, OFF (or depth 0) exactly the shipped 358.4. */
-    private static String desiredFade() {
-        return enabled && paneDepthPercent > 0
-                ? String.format(java.util.Locale.ROOT, "%.5f", 358.4 + 0.00001 * paneDepthPercent) : "358.4";
+        if (!enabled) {
+            return "20";
+        }
+        int p = Math.max(0, Math.min(63, Math.round(paneDepthPercent / 5.0f)));
+        int sat = Math.max(0, Math.min(255, saturationPercent));
+        int m = 512 + 64 * sat + p;
+        return String.format(java.util.Locale.ROOT, "%.8f", 20.0 + m / 524288.0);
     }
 
     /** Current value of a Remix option, or null when it cannot be read. */
@@ -402,13 +411,12 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         }
         verifyTicks = 0;
         Float noise = readFloat(NOISE_SCALE);
-        Float fade = readFloat(FADE_MIN);
-        if (noise == null || fade == null) {
+        if (noise == null) {
             return;
         }
-        if (!near(noise, desiredNoise()) || !near(fade, desiredFade())) {
-            System.out.println("[translucent-fix] runtime options drifted (noiseScale=" + noise + " wanted " + desiredNoise()
-                    + ", distanceFadeMin=" + fade + " wanted " + desiredFade() + "); writing them again");
+        if (!near(noise, desiredNoise())) {
+            System.out.println("[translucent-fix] runtime option drifted (noiseScale=" + noise + " wanted " + desiredNoise()
+                    + "); writing it again");
             optionApplied = false;
             mismatchLogged = true;
         }
@@ -418,26 +426,26 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         try {
             Method m = game("com.nvidia.rtxremix.RemixBridge").getMethod("setConfigVariable", String.class, String.class);
             boolean on = enabled;
-            // ON: 20.001 + 0.01 * saturation (the patched shaders decode the glass colour saturation from it,
-            // 20.011 = 100%); OFF: exactly the shipped 20.
+            // ON: 20 + (512 + 64 * saturation% + pane depth step) / 2^19 (the patched shaders decode the glass colour
+            // saturation and the pane depth strength from it); OFF: exactly the shipped 20.
             int a = (Integer) m.invoke(null, NOISE_SCALE, desiredNoise());
             // shipped value in both states: with it False the bounce-ray resolve applies no glass colour at all
             int b = (Integer) m.invoke(null, TRANSMISSION_APPROX, "True");
-            // 358.4 is the shipped fade minimum. ON: 358.4 + 0.001 * K (K = pane depth percent / 100), which the patched
-            // gbuffer shaders decode as the pane depth effect strength (a shift of at most 0.003 m of the distance fade).
-            int c = (Integer) m.invoke(null, FADE_MIN, desiredFade());
+            int c = 0;   // (pane depth now travels in noiseScale, written above)
             if (indirectAlphaDefault == null) {
                 indirectAlphaDefault = readResolved(INDIRECT_ALPHA_SHADOWS);
             }
             int e = (Integer) m.invoke(null, INDIRECT_ALPHA_SHADOWS, on ? "True" : indirectAlphaDefault);
-            // Better GI: the values are Remix's own defaults whenever the switch or the master switch is off, so OFF is the original rendering
-            boolean gi = on && betterGi;
-            int f = (Integer) m.invoke(null, RUSSIAN_ROULETTE, gi ? "False" : "True");
-            int g = (Integer) m.invoke(null, INDIRECT_SPREAD, gi ? "0.02" : "0.05");
-            boolean ok = a == 0 && b == 0 && c == 0 && e == 0 && f == 0 && g == 0;
+            // GI Spread and reach: Remix's own defaults (Russian roulette on, spread 0.05) whenever the setting or the master switch is off
+            int level = on ? giReach : 0;
+            int f = (Integer) m.invoke(null, RUSSIAN_ROULETTE, level == 0 ? "True" : "False");
+            int g = (Integer) m.invoke(null, INDIRECT_SPREAD, level == 3 ? "0.0" : level == 2 ? "0.025" : "0.05");
+            // 8 bounces while the master switch is on (water and glass refraction chains), Remix's own 4 when it is off
+            int h = (Integer) m.invoke(null, PATH_MAX_BOUNCES, on ? "8" : "4");
+            boolean ok = a == 0 && b == 0 && c == 0 && e == 0 && f == 0 && g == 0 && h == 0;
             if (ok) {
                 System.out.println("[translucent-fix] options written: noiseScale " + desiredNoise() + " (runtime now " + readFloat(NOISE_SCALE)
-                        + "), distanceFadeMin " + desiredFade() + " (runtime now " + readFloat(FADE_MIN) + ")");
+                        + ")");
             }
             return ok;
         } catch (Throwable t) {

@@ -99,7 +99,7 @@ def main():
         run([javac, '--release', '21', '-cp', os.pathsep.join([a.intermediary, a.jar] + ([a.extra_cp] if a.extra_cp else [])), '-d', sett_out] +
             [os.path.join(HERE, 'settings', f) for f in ('SettingCategory.java', 'SettingGroup.java',
                                                          'LightTransformSettings.java', 'LightTransformUi.java',
-                                                         'PercentSlider.java', 'KeyBindButton.java')])
+                                                         'PercentSlider.java', 'KeyBindButton.java', 'CycleButton.java')])
         with zipfile.ZipFile(a.jar) as z:
             factory_orig = z.read(SETTINGS + '/RtxSettingsFactory.class')
         factory_in = os.path.join(work, 'RtxSettingsFactory.class')
@@ -149,7 +149,9 @@ def main():
                SETTINGS + '/PercentSlider.class':
                    open(os.path.join(sett_out, SETTINGS, 'PercentSlider.class'), 'rb').read(),
                SETTINGS + '/KeyBindButton.class':
-                   open(os.path.join(sett_out, SETTINGS, 'KeyBindButton.class'), 'rb').read()}
+                   open(os.path.join(sett_out, SETTINGS, 'KeyBindButton.class'), 'rb').read(),
+               SETTINGS + '/CycleButton.class':
+                   open(os.path.join(sett_out, SETTINGS, 'CycleButton.class'), 'rb').read()}
         # 5. write the new jar, every other entry copied as is
         with zipfile.ZipFile(a.jar) as zi, zipfile.ZipFile(a.out, 'w') as zo:
             seen = set()

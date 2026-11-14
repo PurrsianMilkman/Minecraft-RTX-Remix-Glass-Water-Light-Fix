@@ -27,18 +27,18 @@ To install and use:
 | Light through glass/water absorbed by distance travelled (shadow rays) | Installed; light comes out tinted, a bit dim through red glass, hence the `--k` knob |
 | Glass touching an opaque block gets a real exit face | **Confirmed in game** |
 | Master switch: shipped rendering restored when off | Works live in game; one report of wrong sunlight after switching off then on is still being investigated |
-| Glass colour saturation slider, glass pane depth slider | Installed, in use |
+| Glass colour saturation slider, glass pane depth slider | **Confirmed in game**; pane depth works at any render distance |
 | Dark glass stays dark (the brightness lift only applies to saturated glass) | Confirmed in game (built without `spirv-val`, see below) |
 | Glass Layer Gap (touching glass/water faces pulled 4 mm apart) | Confirmed in game: black sky behind glass plus water is fixed. Glass-under-water flicker and 3+ layer mixing not yet reported |
 | Reflection of a water surface seen through glass or water, including reflected water seen through glass | **Confirmed in game** (stock Remix hides these reflections) |
-| Sun Size slider (softer sun/moon shadow edges) | Installed, **untested in game** |
+| Sun Size slider (softer sun/moon shadow edges, default 100% = shipped) | Installed |
 | Glass Block Depth, Water Blue sliders | Installed, **untested in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | Installed, **untested in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
 | Distant violet/blue skylight tint | Went away once the profile's config matched a stock instance (a main-profile setting, not our shaders); the exact setting was not isolated. A user.conf that pins `rtx.viewDistance.noiseScale` / `distanceFadeMin` silently disables the Master Switch: never save from the Alt+X menu |
 | Royal-blue water top under glass, and blue bounce light under water or in reflected water | **Confirmed fixed in game.** Two causes (items 9 and 10 below): the reflection patch left the ray marked as already inside the water, and bounce rays flew straight through water to the sky |
-| Better GI (Russian roulette off, indirect ray spread angle 0.02; on by default): GI no longer gets stronger up close | **Confirmed in game** |
+| GI Spread and reach (a button that cycles Off / Low / Medium / High: Russian roulette and the indirect ray spread angle; replaces the earlier on/off "Better GI") | Installed, **untested in game** as a four-level button (the Russian roulette off + spread 0.02 combination it replaces was confirmed) |
 | Second, over-refracted set of shadows on sand, sandstone, snow (subsurface materials) seen through water | **Confirmed fixed in game** (item 11 below) |
 | With the primary-ray replacement switched off in Alt+X (PSR off), water drawn as an ordinary visible surface looks very blue | Stock Remix behaviour; not explained by the fixes above |
 
@@ -111,18 +111,18 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
 | Setting | Effect |
 |---|---|
 | Light Transform Mods (Master Switch) | Off = the shipped rendering exactly (shaders, geometry, options); sliders keep their values |
-| Better GI | On by default, with the master switch: turns Russian roulette off and sets the indirect ray spread angle factor to 0.02 (Remix: 0.05), so GI no longer gets stronger the closer you get and is cleaner. Off restores Remix's own values (on, 0.05) |
+| GI Spread and reach | A button: click to cycle **Off, Low, Medium, High** (Medium by default). Off = Remix's own values (Russian roulette on, indirect ray spread angle factor 0.05); Low = Russian roulette off, 0.05; Medium = Russian roulette off, 0.025; High = Russian roulette off, 0.0. Higher gives better indirect lighting spread and no GI that gets stronger up close. Only active with the master switch on |
 | Glass Color Saturation | scales the saturation of glass tint for light (25-200%) |
 | Glass Pane Depth Effect | how strongly panes tint what you see (0-280%) |
 | Glass Block Depth | block tint strength; **applies after a resource reload or restart** (75-400%) |
 | Glass Layer Gap | separates touching glass/water faces (on by default) |
 | Water Blue | blue transmittance of water; **applies after a resource reload or restart** (25-150%) |
-| Sun Size | apparent size of sun and moon (100-2000%); larger = softer shadow edges |
+| Sun Size | apparent size of sun and moon (100-2000%, default 100 = shipped); larger = softer shadow edges |
 | Water Surface Underside, Water Off Glass | geometry test switches (Underside is off by default) |
 | Hotkeys + four key buttons | click a button, press a key (Delete clears); master switch defaults to Numpad 1, debug markers Numpad 2 |
 
-The mod writes `rtx.viewDistance.noiseScale` (on/off flag and saturation) and `rtx.viewDistance.distanceFadeMin` (pane depth) through the
-Remix bridge, checks once a second that the runtime still holds them, and rebuilds the loaded terrain only after the options are written.
+The mod writes `rtx.viewDistance.noiseScale` (on/off flag, saturation and pane depth packed into one value, see `docs/TECHNICAL.md`) and the GI options
+through the Remix bridge, and rebuilds the loaded terrain only after the options are written.
 
 ## What this touches on your machine
 
@@ -134,7 +134,7 @@ Remix bridge, checks once a second that the runtime still holds them, and rebuil
 | `<profile>/javaw.dxvk-cache` | delete after changing the DLL so shaders are rebuilt |
 
 Do **not** change `.rtx-remix-version` or the jar version: the mod re-extracts `remix-sdk/` and `rtx.conf` when they differ.
-Do not keep our keys (`noiseScale`, `distanceFadeMin`) in `user.conf`: a value there outranks the mod's live writes.
+Do not keep our key (`noiseScale`) or the GI options the mod writes (`enableRussianRoulette`, `indirectRaySpreadAngleFactor`, `pathMaxBounces`) in `user.conf`: a value there outranks the mod's live writes.
 
 ## Build and install
 

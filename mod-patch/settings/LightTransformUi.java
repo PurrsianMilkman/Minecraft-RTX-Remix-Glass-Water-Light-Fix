@@ -8,6 +8,7 @@ import net.minecraft.class_124;
 import net.minecraft.class_2561;
 import net.minecraft.class_304;
 import net.minecraft.class_310;
+import net.minecraft.class_339;
 import net.minecraft.class_353;
 import net.minecraft.class_437;
 import net.minecraft.class_7172;
@@ -45,13 +46,17 @@ public final class LightTransformUi {
                 }
             }
             List<class_7842> names = new ArrayList<>();
-            List<PercentSlider> widgets = new ArrayList<>();
+            List<class_339> widgets = new ArrayList<>();
             for (RtxSetting<Integer> s : sliders) {
                 class_7842 name = new class_7842(150, 20, class_2561.method_43471(s.labelKey()), class_310.method_1551().field_1772);
                 name.method_48596();   // align left
                 name.method_47400(net.minecraft.class_7919.method_47407(class_2561.method_43471(s.tooltipKey())));
                 names.add(name);
-                widgets.add(new PercentSlider(s, 150, (int) s.min(), (int) s.max(), s.step()));
+                if ("light.giReach".equals(s.id())) {
+                    widgets.add(new CycleButton(s, 150, (int) s.min(), (int) s.max()));
+                } else {
+                    widgets.add(new PercentSlider(s, 150, (int) s.min(), (int) s.max(), s.step()));
+                }
             }
             // everything built: now add (so a failure above cannot leave half a group behind)
             body.method_20407(header, null);

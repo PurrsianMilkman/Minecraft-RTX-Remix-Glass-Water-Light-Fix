@@ -19,7 +19,7 @@ import sys
 ARGS = sys.argv
 CLEAR = float(ARGS[ARGS.index('--bounce-clear') + 1]) if '--bounce-clear' in ARGS else 0.9
 LIVE = '--live-flag' in ARGS
-SAT = '--sat-slider' in ARGS   # with --live-flag: glass saturation 0.25..2 read from noiseScale = 20.001 + 0.01 * s
+SAT = '--sat-slider' in ARGS   # with --live-flag: glass saturation 0.25..2 read from noiseScale = 20 + m / 2^19, m = 512 + 64 * saturation% + pane step
 TELL = '--telltale' in ARGS  # with --live-flag: bounce light that crosses a patched site turns green (0.05, 1, 0.05)
 FADE_MIN_ON_ABOVE = 358.4005   # same second key as the shadow-ray telltale (rtx.viewDistance.distanceFadeMin)
 VD_MEMBER, NOISE_MEMBER, NOISE_ON_ABOVE = 8, 4, 20.0005
@@ -177,7 +177,7 @@ def main():
             g += [f'%pqb_cvd = OpConstant {t_int} {VD_MEMBER}', f'%pqb_cns = OpConstant {t_int} {NOISE_MEMBER}',
                   f'%pqb_cthr = OpConstant {t_float} {NOISE_ON_ABOVE!r}']
             if SAT:
-                g += [f'%pqb_sbase = OpConstant {t_float} 20.001', f'%pqb_s100 = OpConstant {t_float} 100',
+                g += [f'%pqb_sbase = OpConstant {t_float} 20.0009765625', f'%pqb_s8192 = OpConstant {t_float} 81.92',
                       f'%pqb_smin = OpConstant {t_float} 0.25', f'%pqb_smax = OpConstant {t_float} 2',
                       f'%pqb_w0 = OpConstant {t_float} 0.2126', f'%pqb_w1 = OpConstant {t_float} 0.7152',
                       f'%pqb_w2 = OpConstant {t_float} 0.0722',
@@ -201,7 +201,9 @@ def main():
                 f'{raw} = OpFConvert {t_v3} {p}',
                 f'{tcl0} = OpExtInst {t_v3} {glsl} FMax {raw} %pqb_veps',
                 f'{sp} = OpAccessChain {pf} {cbvar} %pqb_cvd %pqb_cns', f'{sv} = OpLoad {t_float} {sp}',
-                f'{s0} = OpFSub {t_float} {sv} %pqb_sbase', f'{s1} = OpFMul {t_float} {s0} %pqb_s100',
+                # noiseScale = 20 + m / 2^19, m = 512 + 64 * saturation% + pane depth step p:
+                # (noiseScale - 20 - 512/2^19) * 81.92 = saturation / 100 + p * 0.00015625 (p <= 56: error under 0.009)
+                f'{s0} = OpFSub {t_float} {sv} %pqb_sbase', f'{s1} = OpFMul {t_float} {s0} %pqb_s8192',
                 f'{s2} = OpExtInst {t_float} {glsl} FClamp {s1} %pqb_smin %pqb_smax',
                 # hue-safe saturation (2026-11-12): the strongest channel stays fixed, the others are raised to the power s
                 # relative to it, so repeated hits can never make a weaker channel overtake the strongest one. (The old

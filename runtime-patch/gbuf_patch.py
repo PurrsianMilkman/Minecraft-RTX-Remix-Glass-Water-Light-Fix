@@ -9,8 +9,12 @@ Here, for glass only (measurement distance below GLASS_MAX_DISTANCE), the travel
 so a head-on pane absorbs as if it were K * d thick. Anything at least that thick (blocks while K <= 1/d) is untouched,
 and the change is continuous (no seam at oblique angles).
 
-K is read live: ViewDistanceArgs.distanceFadeMin (rtx.viewDistance.distanceFadeMin, shipped 358.4) =
-358.4 + 0.001 * K, so K = (value - 358.4) * 1000, clamped to 0..K_MAX; K = 0 means shipped behaviour. The patch is also
+K is read live from the same option as the live flag and the glass saturation, ViewDistanceArgs.noiseScale
+(rtx.viewDistance.noiseScale, shipped 20): noiseScale = 20 + m / 2^19 with m = 512 + 64 * saturation% + p, p = 0..63,
+so p = (m - 512) & 63 and K = p * 0.05, clamped to 0..K_MAX; p = 0 means shipped behaviour. (It was first carried in
+ViewDistanceArgs.distanceFadeMin, which the automatic view-distance layer also writes below 32 chunks of render distance,
+and then in RaytraceArgs.hairCardRoughnessScale, which stock shaders multiply into the translucent colour scale, so it turned
+glass white. noiseScale is read by nothing else.) The patch is also
 gated by the live fix flag (noiseScale > 20.0005), exactly like the other patches, so OFF is the shipped shader.
 
 Only modules that contain the OpName "PrimaryAttenuation" (the gbuffer shaders) are touched; the integrate_* shaders
@@ -29,10 +33,9 @@ import sys
 # while the live flag is on. It shows WHICH medium the shader believes a ray that escapes to the sky is still inside.
 MISS_PROBE = '--miss-probe' in sys.argv
 NOISE_ON_ABOVE = 20.0005
-FADE_MIN_BASE = 358.4        # shipped rtx.viewDistance.distanceFadeMin
 GLASS_MAX_DISTANCE = 0.5     # water (1.0) and fog media are not glass
 K_MAX = 2.8                  # keeps a 1.0-thick block unchanged while K * 0.35 <= 1
-VD_MEMBER, NOISE_MEMBER, FADE_MIN_MEMBER = 8, 4, 2
+VD_MEMBER, NOISE_MEMBER = 8, 4
 
 
 def main():
@@ -130,10 +133,10 @@ def main():
     if pf == '%pg_pf':
         glob.append(f'%pg_pf = OpTypePointer Uniform {fl}')
     glob += [f'%pg_c8 = OpConstant {i32} {VD_MEMBER}', f'%pg_c4 = OpConstant {i32} {NOISE_MEMBER}',
-             f'%pg_c2 = OpConstant {i32} {FADE_MIN_MEMBER}',
+             f'%pg_i512 = OpConstant {i32} 512', f'%pg_i6 = OpConstant {i32} 6', f'%pg_i63 = OpConstant {i32} 63',
+             f'%pg_c20 = OpConstant {fl} 20.0', f'%pg_2p19 = OpConstant {fl} 524288.0', f'%pg_k05 = OpConstant {fl} 0.05',
              f'%pg_thr = OpConstant {fl} {NOISE_ON_ABOVE!r}', f'%pg_glass = OpConstant {fl} {GLASS_MAX_DISTANCE!r}',
-             f'%pg_base = OpConstant {fl} {FADE_MIN_BASE!r}', f'%pg_k1000 = OpConstant {fl} 1000',
-             f'%pg_k0 = OpConstant {fl} 0', f'%pg_kmax = OpConstant {fl} {K_MAX!r}']
+                          f'%pg_k0 = OpConstant {fl} 0', f'%pg_kmax = OpConstant {fl} {K_MAX!r}']
     if miss_sites:
         glob += [f'%pg_one = OpConstant {fl} 1', f'%pg_pink = OpConstantComposite {v3} %pg_one %pg_k0 %pg_one',
                  f'%pg_green = OpConstantComposite {v3} %pg_k0 %pg_one %pg_k0']
@@ -160,12 +163,13 @@ def main():
         s = by_line.get(i)
         if s:
             n += 1
-            p, v, fb, q, w, fd, kr, k, dk, mx, g, ok, te = [f'%pg_{x}{n}' for x in
-                                                            'p v fb q w fd kr k dk mx g ok te'.split()]
+            p, v, fb, q, w, kr, k, dk, mx, g, ok, te = [f'%pg_{x}{n}' for x in
+                                                            'p v fb q w kr k dk mx g ok te'.split()]
             out += [f'{p} = OpAccessChain {pf} {cb} %pg_c8 %pg_c4', f'{v} = OpLoad {fl} {p}',
                     f'{fb} = OpFOrdGreaterThan {bo} {v} %pg_thr',
-                    f'{q} = OpAccessChain {pf} {cb} %pg_c8 %pg_c2', f'{w} = OpLoad {fl} {q}',
-                    f'{fd} = OpFSub {fl} {w} %pg_base', f'{kr} = OpFMul {fl} {fd} %pg_k1000',
+                    f'{w} = OpFSub {fl} {v} %pg_c20', f'{q} = OpFMul {fl} {w} %pg_2p19', f'{q}i = OpConvertFToS {i32} {q}',
+                    f'{q}j = OpISub {i32} {q}i %pg_i512', f'{q}k = OpBitwiseAnd {i32} {q}j %pg_i63',
+                    f'{q}f = OpConvertSToF {fl} {q}k', f'{kr} = OpFMul {fl} {q}f %pg_k05',
                     f'{k} = OpExtInst {fl} {glsl} FClamp {kr} %pg_k0 %pg_kmax',
                     f'{dk} = OpFMul {fl} {s["dist"]} {k}',
                     f'{mx} = OpExtInst {fl} {glsl} FMax {s["T"]} {dk}',
