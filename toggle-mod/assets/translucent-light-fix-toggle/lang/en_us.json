@@ -33,7 +33,7 @@
   "rtxremix.setting.light.waterUnderside": "Water Surface Underside",
   "rtxremix.setting.light.waterUnderside.tip": "Test switch: keeps the underside of the water surface.",
   "rtxremix.setting.light.waterNudge": "Water Off Glass",
-  "rtxremix.setting.light.waterNudge.tip": "Test switch: pulls water faces slightly off touching glass.",
+  "rtxremix.setting.light.waterNudge.tip": "Pulls water faces slightly off touching glass. On by default.",
   "rtxremix.setting.light.sunSize": "Sun Size",
   "rtxremix.setting.light.sunSize.tip": "Sun and moon size in percent. Bigger = softer shadow edges. 100 = as shipped.",
   "rtxremix.setting.light.hotkeys": "Hotkeys",

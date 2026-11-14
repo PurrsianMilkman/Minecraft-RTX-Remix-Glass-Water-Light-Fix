@@ -57,7 +57,7 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static volatile int saturationPercent = 100;
     private static volatile int paneDepthPercent = 150;
     private static volatile boolean waterUnderside = false;
-    private static volatile boolean waterNudge = false;
+    private static volatile boolean waterNudge = true;
     private static volatile boolean glassGap = true;
     /** "GI Spread and reach": 0 Off, 1 Low, 2 Medium (default), 3 High (see writeOptions). */
     private static volatile int giReach = 2;

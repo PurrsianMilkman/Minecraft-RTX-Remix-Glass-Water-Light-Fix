@@ -7,7 +7,7 @@ Inputs (all built from this repository with mod-patch/patch_jar.py and a plain j
   --build VERSION PRISTINE PATCHED   repeatable: NVIDIA's original jar of that mod version (to find which classes differ) and the
                                      jar patch_jar.py produced from it, e.g. --build 0.1.1 orig011.jar patched011.jar
   --toggle    the companion mod jar built from toggle-mod/ (same for every version)
-Usage: python tools/make_release.py --build 0.1.1 A.jar B.jar --build 0.1.0 C.jar D.jar --toggle T.jar --out dist/RemixGlassFix-Installer.zip --bat dist/X.bat
+Usage: python tools/make_release.py --build 0.1.1 A.jar B.jar --toggle T.jar --out dist/RemixGlassFix-Installer.zip --bat dist/X.bat
 """
 import argparse
 import os

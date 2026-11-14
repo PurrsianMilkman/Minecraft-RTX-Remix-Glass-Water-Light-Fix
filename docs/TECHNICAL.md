@@ -117,11 +117,10 @@ the fade end. The fade then lerps to untinted sky at 100%. The patch makes the g
 
 ## Supporting NVIDIA 0.1.1 (2026-11)
 
-* NVIDIA's 0.1.1 runtime (`d3d9.dll` 309,016,064 bytes) contains the **same 647 SPIR-V shader modules** as 0.1.0, byte for byte; only the order of nine of them
-  differs. So the shader patches need no changes, but they must find their targets by content. `build_runtime.py` therefore accepts both md5s, finds the
+* NVIDIA's 0.1.1 runtime (`d3d9.dll` 309,016,064 bytes) contained the **same 647 SPIR-V shader modules** as 0.1.0, byte for byte; only the order of nine of them
+  differed. 0.1.0 support was dropped on 2026-11-14 (policy: only the latest NVIDIA release is patched; when 0.1.2 is out, 0.1.1 is dropped). The patches find their targets by content. `build_runtime.py` finds the
   composite shader by its names (`CompositeArgs_natural`, `PrimaryLinearViewZ`, `primaryMiss`) and anchors the sky-fade edit structurally (the `OpLogicalNot` of the
   `primaryMiss` load in the `distanceMode == 3` branch, and the view-Z-equals-sentinel comparison) instead of the numeric ids `%18556 / %1039 / %848`.
-  Rebuilding the 0.1.0 DLL with the structural anchors gives the identical md5 (`f259180a...`).
 * The class hooks (`HookEmitter`, `HookLight`, `HookSettings`, `HookCategoryScreen`, `HookMeasure`) apply to 0.1.1 unchanged (same hook counts); the three methods
   that `BlockQuadEmitter` hooks touch pass ASM's `SimpleVerifier` (`Verify2.java`). `NativeExtractor` still re-extracts the natives when the version marker changes.
 * Download speed: GitHub release downloads can crawl on a single connection while a browser is fast. `installer/fastdl.py` (16 MB chunks over 8 connections, each chunk its own Range request, retries, resume) was the installer's way to fetch the mod jar. The installer no longer downloads the mod at all: it patches only the original jar that sits next to the `.bat`, matched by size and MD5. The helper is kept in the repository in case a download fallback comes back.
@@ -242,6 +241,7 @@ therefore writes `rtx.pathMaxBounces = 8` while the master switch is on and Remi
 
 ## Indirect integration mode (2026-11)
 
-Every patch here was built and tested with `rtx.integrateIndirectMode = 1` (ReSTIR GI); the NEE reservoir fix exists only in the ReSTIR GI variant of `integrate_nee`. Remix's own default is 3 (SHaRC, a
-spatially hashed radiance cache whose paths stop early by looking up stored radiance), which is what a profile without that line gets. After a settings reset the reflection of water seen through glass
-went black in mode 3. The mod therefore writes `rtx.integrateIndirectMode = 1` while the master switch is on and Remix's 3 when it is off, next to `rtx.pathMaxBounces = 8` / 4. A value pinned in `user.conf` outranks both.
+Every patch here was built and mostly tested with `rtx.integrateIndirectMode = 1` (ReSTIR GI); the NEE reservoir fix exists only in the ReSTIR GI variant of `integrate_nee`. Remix's own default is 3 (SHaRC, a
+spatially hashed radiance cache whose paths stop early by looking up stored radiance), which is what a profile without that line gets. ReSTIR GI is a **preference, not a requirement**: the mod does not write the mode, and the
+glass, water and shadow fixes work in both. (The black reflection of water seen through glass that appeared after a settings reset was caused by the missing bounce limit, not by the mode: the mod writes `rtx.pathMaxBounces = 8` while the master switch
+is on and Remix's 4 when it is off; a value pinned in `user.conf` outranks it.)

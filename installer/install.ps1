@@ -7,8 +7,7 @@ $out  = if ($env:RGF_OUT) { $env:RGF_OUT } else { Join-Path $root 'output' }   #
 
 # Supported mod builds (NVIDIA's unmodified jars), identified ONLY by size and MD5, never by file name.
 $mods = @(
-    @{ Version = '0.1.1'; Size = 1035282184; Md5 = '0b9c4d5f272fc4627d48ba6c636f2ef5' },
-    @{ Version = '0.1.0'; Size = 1034998399; Md5 = 'c4551ac851988aa6ec5b6299c8cbd259' }
+    @{ Version = '0.1.1'; Size = 1035282184; Md5 = '0b9c4d5f272fc4627d48ba6c636f2ef5' }
 )
 # The folder this file was started from: the .bat's own folder (RGF_OUT for the single-file .bat, the extracted folder for the zip).
 # The mod jar is looked for in THIS folder and nowhere else on the PC; nothing is downloaded for it.
@@ -42,7 +41,7 @@ function CheckSha($path, $sha, $label) {
 if ($env:RGF_SELFTEST) { Write-Host "self-test ok: root=$root out=$out prebuilt=$(Test-Path (Join-Path $root 'prebuilt'))"; exit 0 }
 
 # The original mod: only the jar(s) in the folder this file was started from, matched by size and MD5 (any file name).
-# Returns every match, so a folder holding both a 0.1.0 and a 0.1.1 jar patches both. Jars with LightFix in the name (our own output) are skipped.
+# Returns every match (a folder holding two copies of the supported jar patches both). Jars with LightFix in the name (our own output) are skipped.
 function Find-SideMods {
     $hits = @()
     foreach ($f in (Get-ChildItem -LiteralPath $src -Filter '*.jar' -File -ErrorAction SilentlyContinue)) {
@@ -66,7 +65,7 @@ if ($free -lt 4.5GB) { Fail ('About 4.5 GB of free disk space is needed here, on
 
 Say ''
 Say '=== RTX Remix for Minecraft: glass and water light fix ==='
-Say 'This patches NVIDIA''s original mod (0.1.0 or 0.1.1) and writes ONE jar next to this file, named ...-LightFix.jar. It only looks at the jar in the folder this file is in; the jar is recognised by its hash, not its name.'
+Say 'This patches NVIDIA''s original mod (version 0.1.1) and writes ONE jar next to this file, named ...-LightFix.jar. It only looks at the jar in the folder this file is in; the jar is recognised by its hash, not its name.'
 Say ''
 
 Say "Looking for NVIDIA's original mod jar in: $src"
@@ -77,9 +76,9 @@ if ($targets.Count -eq 0) {
     if ($others.Count -gt 0) {
         Say 'These jar files are in the folder, but none matches a supported build:'
         foreach ($o in $others) { Say ('  {0}  ({1:N0} bytes)' -f $o.Name, $o.Length) }
-        Fail 'None of them is NVIDIA''s original RTX Remix for Minecraft jar, version 0.1.0 or 0.1.1 (an already patched jar, a different version or a damaged download do not match).'
+        Fail 'None of them is NVIDIA''s original RTX Remix for Minecraft jar, version 0.1.1 (an already patched jar, a different version or a damaged download do not match).'
     }
-    Fail ('No mod jar found next to this file. Put NVIDIA''s original rtx-remix-renderer jar (version 0.1.0 or 0.1.1, from https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases) in the same folder as this file, then run this again. Looked in: ' + $src)
+    Fail ('No mod jar found next to this file. Put NVIDIA''s original rtx-remix-renderer jar (version 0.1.1, from https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases) in the same folder as this file, then run this again. Looked in: ' + $src)
 }
 foreach ($t in $targets) { Say ('Found the original mod, version {0}: {1}' -f $t.Version, $t.Path) }
 Say ''

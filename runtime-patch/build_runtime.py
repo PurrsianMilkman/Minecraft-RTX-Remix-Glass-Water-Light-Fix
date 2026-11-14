@@ -35,10 +35,9 @@ WATER_REFLECT_PATCHER = os.path.join(HERE, 'water_reflect_patch.py')
 SSS_PSR_PATCHER = os.path.join(HERE, 'sss_psr_patch.py')
 NEE_RESERVOIR_PATCHER = os.path.join(HERE, 'nee_reservoir_patch.py')
 
-# Supported runtimes (md5 of the pristine d3d9.dll). The 647 embedded shader modules are byte-identical in both builds (only the
-# order of 9 of them differs), so every patch is found by content, never by a fixed offset.
+# Supported runtime (md5 of the pristine d3d9.dll); only the latest NVIDIA release is supported. Every patch is found by content,
+# never by a fixed offset.
 SUPPORTED_BUILDS = {
-    'cbe2d49f543b608a7ac45d6b2c6631ae': 'RTX Remix for Minecraft 0.1.0 (remix-main+71a581da, 309,009,920 bytes)',
     '1ae89b5ebcd2a4dad175d96b1806d5f0': 'RTX Remix for Minecraft 0.1.1 (309,016,064 bytes)',
 }
 SPIRV_MAGIC = b'\x03\x02\x23\x07'

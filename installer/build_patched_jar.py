@@ -1,7 +1,7 @@
 """Build the patched RTX Remix for Minecraft jar: one file to drop into the mods folder.
 
-Input : NVIDIA's own release jar (or the 0.1.0 release zip that contains it), never redistributed by this project.
-        Supported: RTX Remix for Minecraft 0.1.1 and 0.1.0 (picked by the jar's md5).
+Input : NVIDIA's own release jar (or a release zip that contains it), never redistributed by this project.
+        Supported: RTX Remix for Minecraft 0.1.1 only (checked by the jar's md5); when NVIDIA releases a newer version the older one is dropped.
 Output: <out>/<original jar name>-LightFix.jar  (delete the original from the mods folder, put this one in)
 
 What is done:
@@ -27,9 +27,7 @@ import zipfile
 # pristine jar md5 -> version label (also the sub-folder of prebuilt/ that holds that version's changed classes)
 BUILDS = {
     '0b9c4d5f272fc4627d48ba6c636f2ef5': ('0.1.1', 'rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar'),
-    'c4551ac851988aa6ec5b6299c8cbd259': ('0.1.0', 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'),
 }
-ZIP_010_JAR_NAME = 'rtx-remix-renderer-0.1.0-202610230634-170197a.jar'
 DLL_ENTRY = 'native/remix-sdk-win64/d3d9.dll'
 VERSION_SUFFIX = '+glassfix1'
 TOGGLE_ENTRYPOINTS = {'preLaunch': 'purrsian.translucentfix.TranslucentFixPreLaunch',
@@ -54,16 +52,16 @@ def say(msg):
 def get_pristine_jar(a, work):
     if a.jar:
         return a.jar
-    target = os.path.join(work, 'pristine', ZIP_010_JAR_NAME)
-    if os.path.isfile(target) and md5_of(target) in BUILDS:
-        say('pristine jar already extracted')
-        return target
-    say('extracting the mod jar from NVIDIA\'s zip ...')
-    os.makedirs(os.path.dirname(target), exist_ok=True)
     with zipfile.ZipFile(a.zip) as z:
         names = [n for n in z.namelist() if n.endswith('.jar') and 'rtx-remix-renderer' in n]
         if len(names) != 1:
             sys.exit('expected exactly one renderer jar in the zip, found %r' % names)
+        target = os.path.join(work, 'pristine', os.path.basename(names[0]))
+        if os.path.isfile(target) and md5_of(target) in BUILDS:
+            say('pristine jar already extracted')
+            return target
+        say("extracting the mod jar from NVIDIA's zip ...")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         with z.open(names[0]) as src, open(target, 'wb') as dst:
             while True:
                 chunk = src.read(1 << 22)
@@ -120,8 +118,7 @@ def main():
     got = md5_of(jar)
     if got not in BUILDS:
         sys.exit('This is not a supported mod build (md5 %s).\n'
-                 'Supported: RTX Remix for Minecraft 0.1.1 (rtx-remix-renderer-0.1.1-202611060211-7d2ba9f) and 0.1.0 '
-                 '(rtx-remix-renderer-0.1.0-202610230634-170197a), the unmodified jars from NVIDIA.' % got)
+                 'Supported: RTX Remix for Minecraft 0.1.1 (rtx-remix-renderer-0.1.1-202611060211-7d2ba9f), the unmodified jar from NVIDIA.' % got)
     version, jar_name = BUILDS[got]
     say('mod version %s' % version)
 

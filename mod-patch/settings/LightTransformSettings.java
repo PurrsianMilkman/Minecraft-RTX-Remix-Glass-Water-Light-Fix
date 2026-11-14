@@ -54,7 +54,7 @@ public final class LightTransformSettings {
                 false, () -> get(toggle, "isWaterUnderside", false), v -> set(toggle, "setWaterUnderside", v)));
         list.add(RtxSetting.ofBool("light.waterNudge", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.waterNudge", "rtxremix.setting.light.waterNudge.tip",
-                false, () -> get(toggle, "isWaterNudge", false), v -> set(toggle, "setWaterNudge", v)));
+                true, () -> get(toggle, "isWaterNudge", true), v -> set(toggle, "setWaterNudge", v)));
         list.add(RtxSetting.ofInt("light.sunSize", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.sunSize", "rtxremix.setting.light.sunSize.tip",
                 100, 2000, 100, () -> getInt(toggle, "getSunSize", 100), v -> setInt(toggle, "setSunSize", v))

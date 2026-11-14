@@ -32,8 +32,8 @@ To install and use:
 | Glass Layer Gap (touching glass/water faces pulled 4 mm apart) | Confirmed in game: black sky behind glass plus water is fixed. Glass-under-water flicker and 3+ layer mixing not yet reported |
 | Reflection of a water surface seen through glass or water, including reflected water seen through glass | **Confirmed in game** (stock Remix hides these reflections) |
 | Sun Size slider (softer sun/moon shadow edges, default 100% = shipped) | Installed |
-| Glass Block Depth, Water Blue sliders | Installed, **untested in game**; apply when the materials are rebuilt (resource reload or restart) |
-| Hotkey assignment buttons in the settings menu | Installed, **untested in game** |
+| Glass Block Depth, Water Blue sliders | **Confirmed in game**; apply when the materials are rebuilt (resource reload or restart) |
+| Hotkey assignment buttons in the settings menu | **Confirmed in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
 | Distant violet/blue skylight tint | Went away once the profile's config matched a stock instance (a main-profile setting, not our shaders); the exact setting was not isolated. A user.conf that pins `rtx.viewDistance.noiseScale` / `distanceFadeMin` silently disables the Master Switch: never save from the Alt+X menu |
@@ -47,10 +47,9 @@ To install and use:
 | NVIDIA release | Jar (pristine md5) | Runtime `d3d9.dll` (pristine md5) |
 |---|---|---|
 | **0.1.1** (latest, `7d2ba9f`) | `rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar`, `0b9c4d5f272fc4627d48ba6c636f2ef5` | `1ae89b5ebcd2a4dad175d96b1806d5f0`, 309,016,064 bytes |
-| 0.1.0 (`170197a`) | `rtx-remix-renderer-0.1.0-202610230634-170197a.jar`, `c4551ac851988aa6ec5b6299c8cbd259` | `cbe2d49f543b608a7ac45d6b2c6631ae`, 309,009,920 bytes (`remix-main+71a581da`, API 0.16.0) |
 
-The 647 shader modules inside the two runtimes are byte-identical (only the order of nine of them differs), so the same shader patches apply to both;
-they are found by content, not by offset.
+Only the latest NVIDIA release is supported (0.1.0 was dropped); when NVIDIA releases a newer version, the older one is dropped. The shader patches
+find their targets by content, not by offset.
 The runtime is an internal NVIDIA build whose source is not public (the mod's `CONTRIBUTING.md` says so), and public
 `dxvk-remix` speaks a different API version, so the fix is a **size-preserving patch of the SPIR-V shaders embedded in the DLL**.
 The patched DLL reads two Remix options as live channels, so the companion mod can switch and tune the fix without a restart.
@@ -118,7 +117,7 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
 | Glass Layer Gap | separates touching glass/water faces (on by default) |
 | Water Blue | blue transmittance of water; **applies after a resource reload or restart** (25-150%) |
 | Sun Size | apparent size of sun and moon (100-2000%, default 100 = shipped); larger = softer shadow edges |
-| Water Surface Underside, Water Off Glass | geometry test switches (Underside is off by default) |
+| Glass Layer Gap, Water Surface Underside, Water Off Glass | geometry switches (Layer Gap and Water Off Glass are on by default, Underside is off) |
 | Hotkeys + four key buttons | click a button, press a key (Delete clears); master switch defaults to Numpad 1, debug markers Numpad 2 |
 
 The mod writes `rtx.viewDistance.noiseScale` (on/off flag, saturation and pane depth packed into one value, see `docs/TECHNICAL.md`) and the GI options
@@ -157,9 +156,8 @@ The companion mod is plain Java: compile `toggle-mod/src/**` against the Minecra
 above and brigadier (`javac --release 21`), add `toggle-mod/assets` and `toggle-mod/fabric.mod.json`, and `jar` it.
 
 Back up the originals, copy the outputs over them, delete `javaw.dxvk-cache`, check the md5 of the DLL you copied in. Build time is about
-a minute; the first launch is slower while shaders are rebuilt. The DLL build above produced md5 `f259180a499791e87b9a13987c0fa05f` for the 0.1.0 runtime and
-`68af47616690009975f252030d0bd25f` for the 0.1.1 runtime (both built without `spirv-val`, with the older flag set). With all the flags above (built with `spirv-val`,
-every module validated) the 0.1.1 runtime comes out as md5 `8ca11e36b667ec10ec6ed44603d95551`.
+a minute; the first launch is slower while shaders are rebuilt. With all the flags above (built with `spirv-val`, every module validated) the 0.1.1 runtime comes out with a different md5 after every patch change; the
+installer builds it for you.
 
 ## Restore
 
