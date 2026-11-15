@@ -13,7 +13,7 @@ below. Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and
 To install and use:
 
 1. Download the original mod from NVIDIA: https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases/download/v0.1.1/rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar
-2. Download the patch: https://github.com/PurrsianMilkman/Minecraft-RTX-Remix-Glass-Water-Light-Fix/releases/latest/download/Make-Patched-RTX-Remix-Glass-Fix.bat
+2. Download the patch: https://github.com/PurrsianMilkman/Minecraft-RTX-Remix-Glass-Water-Light-Fix/releases/download/installer-v1.0.0/Make-Patched-RTX-Remix-Glass-Fix.bat
 3. Put both the jar file and the bat file in the same folder and run the bat file. The bat file will give you the patched jar file.
 4. Put the patched jar file in your mods folder, just like other mods.
 5. Remove the original jar file if it is still there.
