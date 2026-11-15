@@ -185,7 +185,8 @@ Put the original `d3d9.dll` and the original renderer jar back, remove the compa
 
 ## Known gaps
 
-* The distant violet/blue skylight tint is unexplained and also happens with the mods off.
+* Red-tinted reflections are not caused by this patch: they come from DLSS Ray Reconstruction presets D and E. Pick a different Ray Reconstruction
+  preset in the Remix menu (Alt+X) if you see them.
 * Glass Block Depth and Water Blue cannot be live: they change materials the mod builds once.
 * Only the builds above are supported. A new NVIDIA release needs its jar and runtime md5 added (the shader modules may or may not have changed; see `docs/TECHNICAL.md`).
 * The right long-term fix is in the runtime source; this should become an upstream issue or PR once the runtime branch is public.
