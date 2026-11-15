@@ -61,7 +61,7 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static volatile boolean glassGap = true;
     private static volatile boolean textureBlendFix = true;
     /** "GI Spread and reach": 0 Off, 1 Low, 2 Medium (default), 3 High (see writeOptions). */
-    private static volatile int giReach = 2;
+    private static volatile int giReach = 1;   // Low by default
     private static volatile int glassDepthPercent = 100;
     private static volatile int waterBluePercent = 100;
     private static volatile int sunSizePercent = 100;
@@ -72,6 +72,7 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static class_304 diagKey;
     private static class_304 undersideKey;
     private static class_304 nudgeKey;
+    private static class_304 rtxKey;
 
     // ---- state, read and written by the RTX settings menu (LightTransformSettings) ----
 
@@ -317,13 +318,28 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         }
     }
 
-    /** The assignable hotkeys, in the order the settings menu lists them: master switch, debug markers, water underside, water off glass. */
+    /**
+     * The assignable hotkeys, in the order the settings menu lists them: master switch, debug markers, water underside, water off glass,
+     * RTX on/off (the same as the mod's "rtx on" / "rtx off" commands).
+     */
     public static int hotkeyCount() {
-        return 4;
+        return 5;
     }
 
     public static class_304 getHotkey(int i) {
-        return i == 0 ? toggleKey : i == 1 ? diagKey : i == 2 ? undersideKey : nudgeKey;
+        return i == 0 ? toggleKey : i == 1 ? diagKey : i == 2 ? undersideKey : i == 3 ? nudgeKey : rtxKey;
+    }
+
+    /** RTX on / off, exactly what the mod's "rtx on" and "rtx off" commands call (RtxRemixMod.setRtxEnabled, render thread). */
+    private static void toggleRtx(class_310 client) {
+        try {
+            Class<?> mod = game("com.nvidia.rtxremix.minecraft.RtxRemixMod");
+            boolean on = !(Boolean) mod.getMethod("isRtxEnabled").invoke(null);
+            mod.getMethod("setRtxEnabled", boolean.class).invoke(null, on);
+            announce(client, "RTX Rendering: " + (on ? "ON" : "OFF"));
+        } catch (Throwable t) {
+            System.err.println("[translucent-fix] RTX on/off hotkey failed: " + t);
+        }
     }
 
     public static boolean isHotkeys() {
@@ -364,6 +380,8 @@ public final class TranslucentFixToggle implements ClientModInitializer {
                 new class_304("key.translucentfix.waterUnderside", -1, "key.categories.misc"));
         nudgeKey = KeyBindingHelper.registerKeyBinding(
                 new class_304("key.translucentfix.waterNudge", -1, "key.categories.misc"));
+        rtxKey = KeyBindingHelper.registerKeyBinding(
+                new class_304("key.translucentfix.rtxToggle", -1, "key.categories.misc"));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (toggleKey.method_1436()) {
                 if (hotkeys) {
@@ -391,6 +409,11 @@ public final class TranslucentFixToggle implements ClientModInitializer {
                     setWaterNudge(!waterNudge);
                     announce(client, "Water Off Glass: " + (waterNudge ? "ON" : "OFF"));
                     saveSettings();
+                }
+            }
+            while (rtxKey.method_1436()) {
+                if (hotkeys) {
+                    toggleRtx(client);
                 }
             }
             verifyOptions();

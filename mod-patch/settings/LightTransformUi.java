@@ -11,6 +11,7 @@ import net.minecraft.class_310;
 import net.minecraft.class_339;
 import net.minecraft.class_353;
 import net.minecraft.class_437;
+import net.minecraft.class_4185;
 import net.minecraft.class_7172;
 import net.minecraft.class_7842;
 
@@ -73,26 +74,26 @@ public final class LightTransformUi {
         }
     }
 
-    /** The "Hotkeys" rows: a name and a click-then-press key button for each toggle in the toggle mod. Never fatal. */
+    /** The "Hotkeys" rows: a "Name: key" click-then-press button and an Unbind button for each hotkey in the toggle mod. Never fatal. */
     private static void addHotkeys(class_353 body) {
         try {
             Class<?> toggle = Class.forName("purrsian.translucentfix.TranslucentFixToggle", true,
                     LightTransformUi.class.getClassLoader());
             int n = (Integer) toggle.getMethod("hotkeyCount").invoke(null);
             java.lang.reflect.Method get = toggle.getMethod("getHotkey", int.class);
-            List<class_7842> names = new ArrayList<>();
             List<KeyBindButton> buttons = new ArrayList<>();
+            List<class_4185> unbinds = new ArrayList<>();
             for (int i = 0; i < n; i++) {
                 class_304 kb = (class_304) get.invoke(null, i);
-                class_7842 name = new class_7842(150, 20, class_2561.method_43471("rtxremix.hotkey." + i), class_310.method_1551().field_1772);
-                name.method_48596();
-                names.add(name);
-                buttons.add(new KeyBindButton(kb, 150));
+                KeyBindButton key = new KeyBindButton(kb, 150, class_2561.method_43471("rtxremix.hotkey." + i));
+                buttons.add(key);
+                unbinds.add(class_4185.method_46430(class_2561.method_43471("rtxremix.hotkey.unbind"), b -> key.unbind())
+                        .method_46437(150, 20).method_46431());
             }
             body.method_20407(new class_7842(310, 20, class_2561.method_43471("rtxremix.hotkey.header").method_27692(class_124.field_1067),
                     class_310.method_1551().field_1772), null);
             for (int i = 0; i < n; i++) {
-                body.method_20407(names.get(i), buttons.get(i));
+                body.method_20407(buttons.get(i), unbinds.get(i));
             }
         } catch (Throwable t) {
             // no hotkey rows; the rest of the group is already there

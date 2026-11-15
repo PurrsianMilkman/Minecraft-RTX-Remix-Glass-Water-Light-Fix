@@ -18,22 +18,32 @@ import net.minecraft.class_4185;
  */
 final class KeyBindButton extends class_4185 {
     private final class_304 binding;
+    private final class_2561 label;
     private boolean listening;
 
-    KeyBindButton(class_304 binding, int width) {
+    /** label: shown before the key ("Master Switch Key: Numpad 1"), so the row's other slot can hold the Unbind button. */
+    KeyBindButton(class_304 binding, int width, class_2561 label) {
         super(0, 0, width, 20, class_2561.method_43473(), (class_4185.class_4241) null, field_40754);
         this.binding = binding;
+        this.label = label;
         refresh();
     }
 
     private void refresh() {
         class_2561 key = binding.method_16007();
+        class_2561 shown;
         if (listening) {
-            method_25355(class_2561.method_43470("> ").method_10852(key.method_27661().method_27692(class_124.field_1054))
-                    .method_10852(class_2561.method_43470(" <")).method_27692(class_124.field_1054));
+            shown = class_2561.method_43470("> ").method_10852(key.method_27661().method_27692(class_124.field_1054))
+                    .method_10852(class_2561.method_43470(" <")).method_27692(class_124.field_1054);
         } else {
-            method_25355(key);
+            shown = key;
         }
+        method_25355(label == null ? shown : label.method_27661().method_10852(class_2561.method_43470(": ")).method_10852(shown));
+    }
+
+    /** The Unbind button next to this one: no key. */
+    void unbind() {
+        assign(class_3675.field_16237);
     }
 
     private void assign(class_3675.class_306 key) {

@@ -26,7 +26,7 @@ public final class LightTransformSettings {
                 true, () -> get(toggle, "isFixEnabled", true), v -> set(toggle, "setFixEnabled", v)));
         list.add(RtxSetting.ofInt("light.giReach", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.giReach", "rtxremix.setting.light.giReach.tip",
-                0, 3, 2, () -> getInt(toggle, "getGiReach", 2), v -> setInt(toggle, "setGiReach", v)));
+                0, 3, 1, () -> getInt(toggle, "getGiReach", 1), v -> setInt(toggle, "setGiReach", v)));
         list.add(RtxSetting.ofBool("light.debugMarkers", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.debugMarkers", "rtxremix.setting.light.debugMarkers.tip",
                 false, () -> get(toggle, "isDiagnostic", false), v -> set(toggle, "setDiagnostic", v)));

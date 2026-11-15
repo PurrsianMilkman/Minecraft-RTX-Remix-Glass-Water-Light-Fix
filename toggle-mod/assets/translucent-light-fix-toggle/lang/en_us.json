@@ -3,11 +3,14 @@
   "key.translucentfix.diagnostic": "Toggle Diagnostic Red Tint",
   "key.translucentfix.waterUnderside": "Toggle Water Surface Underside",
   "key.translucentfix.waterNudge": "Toggle Water Off Glass",
-  "rtxremix.hotkey.header": "Hotkeys (click a button, then press a key; Delete clears)",
+  "key.translucentfix.rtxToggle": "Toggle RTX (rtx on / rtx off)",
+  "rtxremix.hotkey.header": "Hotkeys (click a key button, then press a key; Unbind clears it)",
   "rtxremix.hotkey.0": "Master Switch Key",
   "rtxremix.hotkey.1": "Debug Markers Key",
   "rtxremix.hotkey.2": "Water Underside Key",
   "rtxremix.hotkey.3": "Water Off Glass Key",
+  "rtxremix.hotkey.4": "RTX On/Off Key",
+  "rtxremix.hotkey.unbind": "Unbind",
   "rtxremix.settings.category.lightTransform": "Light Transform Modifications",
   "rtxremix.settings.group.lightTransform": "Light Transform Modifications",
   "rtxremix.setting.light.fix": "Light Transform Mods (Master Switch)",
@@ -39,5 +42,5 @@
   "rtxremix.setting.light.sunSize": "Sun Size",
   "rtxremix.setting.light.sunSize.tip": "Sun and moon size in percent. Bigger = softer shadow edges. 100 = as shipped.",
   "rtxremix.setting.light.hotkeys": "Hotkeys",
-  "rtxremix.setting.light.hotkeys.tip": "Enable the hotkeys below. Click a button, press a key; Delete clears."
+  "rtxremix.setting.light.hotkeys.tip": "Enable the hotkeys below. Click a key button, press a key; Unbind clears it."
 }

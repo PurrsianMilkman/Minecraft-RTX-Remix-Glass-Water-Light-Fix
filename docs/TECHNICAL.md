@@ -218,14 +218,14 @@ module, one site (the ReSTIR GI variant of `integrate_nee`); validated with spir
 
 ## GI Spread and reach (2026-11)
 
-A menu button (integer setting 0..3 shown by `CycleButton`, a `ButtonWidget` that steps the value and wraps; `LightTransformUi` uses it instead of a slider for `light.giReach`, default 2) that, with the
+A menu button (integer setting 0..3 shown by `CycleButton`, a `ButtonWidget` that steps the value and wraps; `LightTransformUi` uses it instead of a slider for `light.giReach`, default 1 = Low) that, with the
 master switch on, writes two Remix options through the bridge:
 
 | Level | `rtx.enableRussianRoulette` | `rtx.indirectRaySpreadAngleFactor` |
 |---|---|---|
 | Off (0) | True (Remix) | 0.05 (Remix) |
-| Low (1) | False | 0.05 |
-| Medium (2, default) | False | 0.025 |
+| Low (1, default) | False | 0.05 |
+| Medium (2) | False | 0.025 |
 | High (3) | False | 0.0 |
 
 Russian roulette ends paths early at random and compensates by boosting the survivors; in practice indirect light then grows stronger the closer you get to a surface, because the termination
