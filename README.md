@@ -13,7 +13,7 @@ below. Not affiliated with NVIDIA, Mojang or Microsoft. Use at your own risk and
 To install and use:
 
 1. Download the original mod from NVIDIA: https://github.com/NVIDIAGameWorks/rtx-remix-minecraft/releases/download/v0.1.1/rtx-remix-renderer-0.1.1-202611060211-7d2ba9f.jar
-2. Download the patch: https://github.com/PurrsianMilkman/Minecraft-RTX-Remix-Glass-Water-Light-Fix/releases/download/installer-v1.0.0-rc1/Make-Patched-RTX-Remix-Glass-Fix.bat
+2. Download the patch: https://github.com/PurrsianMilkman/Minecraft-RTX-Remix-Glass-Water-Light-Fix/releases/latest/download/Make-Patched-RTX-Remix-Glass-Fix.bat
 3. Put both the jar file and the bat file in the same folder and run the bat file. The bat file will give you the patched jar file.
 4. Put the patched jar file in your mods folder, just like other mods.
 5. Remove the original jar file if it is still there.
@@ -34,14 +34,14 @@ To install and use:
 | Sun Size slider (softer sun/moon shadow edges, default 100% = shipped) | Installed |
 | Glass Block Depth, Water Blue sliders | **Confirmed in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | **Confirmed in game** |
-| Unbind buttons next to each hotkey, RTX On/Off hotkey, GI Spread and reach default Low | Installed, **untested in game** |
+| Unbind buttons next to each hotkey, RTX On/Off hotkey, GI Spread and reach default Low | **Confirmed in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
 | Water Off Glass applied at start without toggling, and lava enclosed in glass no longer flickering | **Confirmed in game** (the setting never reached the mesh builder at start, which left water black until toggled off and on) |
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
 | Violet/blue indirect light (worst with gray glass) and violet horizon, red tints, distant blocks such as quartz glowing orange | **Confirmed fixed in game** by the Texture blend/horizon fix (item 13 below). Do not pin `rtx.viewDistance.noiseScale` in user.conf: it silently disables the Master Switch, so never save from the Alt+X menu |
 | Texture blend/horizon fix as a menu toggle (the hash marker that switches it per texture) | **Confirmed in game** (on, off and on again; the setting reloads the resources) |
 | Royal-blue water top under glass, and blue bounce light under water or in reflected water | **Confirmed fixed in game.** Two causes (items 9 and 10 below): the reflection patch left the ray marked as already inside the water, and bounce rays flew straight through water to the sky |
-| GI Spread and reach (a button that cycles Off / Low / Medium / High: Russian roulette and the indirect ray spread angle; replaces the earlier on/off "Better GI") | **Confirmed in game**; Low by default |
+| GI Spread and reach (a button that cycles Off / Low / Medium / High: Russian roulette and the indirect ray spread angle; replaces the earlier on/off "Better GI") | **Confirmed in game**; Low by default. Medium and High (spread below 0.05) make direct sunlight look a little smeared; Low keeps it sharp. With the Texture blend/horizon fix a lower spread is no longer needed to avoid off-colour light |
 | Second, over-refracted set of shadows on sand, sandstone, snow (subsurface materials) seen through water | **Confirmed fixed in game** (item 11 below) |
 | With the primary-ray replacement switched off in Alt+X (PSR off), water drawn as an ordinary visible surface looks very blue | Stock Remix behaviour; not explained by the fixes above |
 

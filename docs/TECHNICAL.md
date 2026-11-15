@@ -228,6 +228,9 @@ master switch on, writes two Remix options through the bridge:
 | Medium (2) | False | 0.025 |
 | High (3) | False | 0.0 |
 
+Low is the default (2026-11-15). Below 0.05 (Medium, High) the denoiser leaves direct sunlight slightly smeared; at 0.05 it stays sharp. A spread of 0 used to be the
+only way to avoid the violet/red indirect light; with the Texture blend/horizon fix (coarse atlas mips no longer blend neighbouring sprites) that is no longer needed.
+
 Russian roulette ends paths early at random and compensates by boosting the survivors; in practice indirect light then grows stronger the closer you get to a surface, because the termination
 probability depends on the path throughput. The spread angle factor (Remix default 0.05, range 0-1) widens a ray's cone after an indirect BRDF sample to prefilter the lobe; smaller values keep
 the lobe sharper. With the setting at Off, or the master switch off, the mod writes Remix's own defaults, so Off is the original rendering whatever an earlier Alt+X session left in `rtx.conf`.
