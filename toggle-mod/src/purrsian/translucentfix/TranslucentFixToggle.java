@@ -272,6 +272,23 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         }
     }
 
+    /**
+     * The geometry switches the mesh builder reads (Water Off Glass, Glass Layer Gap, Water Surface Underside) live in GlassContactFaces.
+     * Their setters only push a value when it changes, and the saved settings are applied through those setters, so a saved value
+     * equal to this class's default never reached the helper (Water Off Glass stayed off until toggled off and on: black water).
+     * Push all three once at start.
+     */
+    private static void applyGeometrySwitches() {
+        try {
+            Class<?> h = game("com.nvidia.rtxremix.minecraft.terrain.capture.GlassContactFaces");
+            h.getField("nudgeWater").setBoolean(null, waterNudge);
+            h.getField("separateGlass").setBoolean(null, glassGap);
+            h.getField("keepWaterUnderside").setBoolean(null, waterUnderside);
+        } catch (Throwable t) {
+            System.err.println("[translucent-fix] geometry switches unavailable: " + t);
+        }
+    }
+
     private static void applyTextureBlendFix() {
         try {
             game("com.nvidia.rtxremix.minecraft.terrain.capture.GlassContactFaces").getField("textureBlendFix").setBoolean(null, textureBlendFix);
@@ -337,6 +354,7 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         applyGlassDepth();
         applyWaterBlue();
         applyTextureBlendFix();
+        applyGeometrySwitches();
         toggleKey = KeyBindingHelper.registerKeyBinding(
                 new class_304("key.translucentfix.toggle", 321, "key.categories.misc"));
         diagKey = KeyBindingHelper.registerKeyBinding(

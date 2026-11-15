@@ -57,11 +57,18 @@ public class HookEmitter {
                 for (AbstractInsnNode n : m.instructions.toArray())
                     if (n instanceof MethodInsnNode mi && mi.name.equals("writeFluidQuad")) wq.add(mi);
                 if (wq.size() != 9) throw new IllegalStateException("expected 9 writeFluidQuad calls left, found " + wq.size());
-                MethodInsnNode bottomWater = wq.get(wq.size() - 4), sideWater = wq.get(wq.size() - 2);
-                m.instructions.set(bottomWater, new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "fluidQuadBottom",
-                        "(L" + bottomWater.owner + ";" + bottomWater.desc.substring(1), false));
-                m.instructions.set(sideWater, new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "fluidQuadSide",
-                        "(L" + sideWater.owner + ";" + sideWater.desc.substring(1), false));
+                // (the branches are "if water" on local 9 = !fluid.isIn(LAVA): water call first, lava call second.) Lava faces
+                // flicker against glass the same way, so the lava bottom and side calls (3rd from the end, last) get the same helpers.
+                MethodInsnNode bottomWater = wq.get(wq.size() - 4), bottomLava = wq.get(wq.size() - 3);
+                MethodInsnNode sideWater = wq.get(wq.size() - 2), sideLava = wq.get(wq.size() - 1);
+                for (MethodInsnNode bottom : new MethodInsnNode[] {bottomWater, bottomLava}) {
+                    m.instructions.set(bottom, new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "fluidQuadBottom",
+                            "(L" + bottom.owner + ";" + bottom.desc.substring(1), false));
+                }
+                for (MethodInsnNode side : new MethodInsnNode[] {sideWater, sideLava}) {
+                    m.instructions.set(side, new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "fluidQuadSide",
+                            "(L" + side.owner + ";" + side.desc.substring(1), false));
+                }
                 // entry: GlassContactFaces.enterFluid(world, baseX + lx, baseY + ly, baseZ + lz)
                 InsnList enter = new InsnList();
                 enter.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -80,7 +87,7 @@ public class HookEmitter {
                 enter.add(new MethodInsnNode(Opcodes.INVOKESTATIC, HELPER, "enterFluid",
                         "(L" + WORLD + ";III)V", false));
                 m.instructions.insert(enter);
-                hooks += 3;
+                hooks += 5;
             } else if (m.name.equals("stageBakedQuad")) {
                 // insert before "aload vd; bipush 7; iaload" (int packedNormal = vd[7])
                 AbstractInsnNode target = null;
@@ -133,8 +140,8 @@ public class HookEmitter {
                 hooks++;
             }
         }
-        System.out.println("hooks inserted: " + hooks + " (expect 8: 2 returns + stageBakedQuad + frapi + water top + 3 water-nudge)");
-        if (hooks != 8) System.exit(2);
+        System.out.println("hooks inserted: " + hooks + " (expect 10: 2 returns + stageBakedQuad + frapi + water top + 4 fluid-nudge + enterFluid)");
+        if (hooks != 10) System.exit(2);
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         cn.accept(cw);
         Files.write(Paths.get(a[1]), cw.toByteArray());

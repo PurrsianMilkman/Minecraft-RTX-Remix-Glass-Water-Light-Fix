@@ -35,6 +35,7 @@ To install and use:
 | Glass Block Depth, Water Blue sliders | **Confirmed in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | **Confirmed in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
+| Water Off Glass applied at start without toggling, and lava enclosed in glass no longer flickering | Installed, **untested in game** (the setting never reached the mesh builder at start, which left water black until toggled off and on) |
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
 | Violet/blue indirect light (worst with gray glass) and violet horizon, red tints, distant blocks such as quartz glowing orange | **Confirmed fixed in game** by the Texture blend/horizon fix (item 13 below). Do not pin `rtx.viewDistance.noiseScale` in user.conf: it silently disables the Master Switch, so never save from the Alt+X menu |
 | Texture blend/horizon fix as a menu toggle (the hash marker that switches it per texture) | **Confirmed in game** (on, off and on again; the setting reloads the resources) |
@@ -126,7 +127,7 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
 | Water Blue | blue transmittance of water; **applies after a resource reload or restart** (25-150%) |
 | Sun Size | apparent size of sun and moon (100-2000%, default 100 = shipped); larger = softer shadow edges |
 | Texture blend/horizon fix | stops neighbouring block textures from smearing into each other (off-colour horizon and indirect light); on by default with the master switch; changing it reloads the resources |
-| Glass Layer Gap, Water Surface Underside, Water Off Glass | geometry switches (Layer Gap and Water Off Glass are on by default, Underside is off) |
+| Glass Layer Gap, Water Surface Underside, Water Off Glass | geometry switches (Layer Gap and Water Off Glass are on by default, Underside is off). Water Off Glass pulls water **and lava** faces a hair off touching glass, so they do not flicker |
 | Hotkeys + four key buttons | click a button, press a key (Delete clears); master switch defaults to Numpad 1, debug markers Numpad 2 |
 
 The mod writes `rtx.viewDistance.noiseScale` (on/off flag, saturation and pane depth packed into one value, see `docs/TECHNICAL.md`) and the GI options

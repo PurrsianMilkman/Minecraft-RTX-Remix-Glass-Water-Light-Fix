@@ -30,11 +30,12 @@ public final class GlassContactFaces {
     public static volatile boolean keepWaterUnderside = "true".equals(System.getProperty("translucentfix.waterUnderside"));
 
     /**
-     * Pull water bottom and side faces that touch a glass-like block a hair off the glass, so the glass back face and
-     * the water face are never coplanar and a view ray crosses glass, then a hairline of air, then water in a defined order.
-     * Off by default; -Dtranslucentfix.waterNudge=true or the toggle mod setting turns it on.
+     * Pull water and lava bottom and side faces that touch a glass-like block a hair off the glass, so the glass back face and
+     * the fluid face are never coplanar and a view ray crosses glass, then a hairline of air, then the fluid in a defined order
+     * (coplanar faces flicker: water over glass, lava enclosed in glass). On unless -Dtranslucentfix.waterNudge=false; the toggle
+     * mod's "Water Off Glass" setting switches it.
      */
-    public static volatile boolean nudgeWater = "true".equals(System.getProperty("translucentfix.waterNudge"));
+    public static volatile boolean nudgeWater = !"false".equals(System.getProperty("translucentfix.waterNudge"));
 
     /**
      * Pull the faces of a glass-like block that touch ANOTHER glass-like block (a different colour of glass, water) a hair
