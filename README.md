@@ -36,7 +36,8 @@ To install and use:
 | Hotkey assignment buttons in the settings menu | **Confirmed in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
-| Distant violet/blue skylight tint | Went away once the profile's config matched a stock instance (a main-profile setting, not our shaders); the exact setting was not isolated. A user.conf that pins `rtx.viewDistance.noiseScale` / `distanceFadeMin` silently disables the Master Switch: never save from the Alt+X menu |
+| Violet/blue indirect light (worst with gray glass) and violet horizon, red tints, distant blocks such as quartz glowing orange | **Confirmed fixed in game** by the Texture blend/horizon fix (item 13 below). Do not pin `rtx.viewDistance.noiseScale` in user.conf: it silently disables the Master Switch, so never save from the Alt+X menu |
+| Texture blend/horizon fix as a menu toggle (the hash marker that switches it per texture) | Installed, **untested in game** as a toggle (the fixed version of the same mip cap was confirmed) |
 | Royal-blue water top under glass, and blue bounce light under water or in reflected water | **Confirmed fixed in game.** Two causes (items 9 and 10 below): the reflection patch left the ray marked as already inside the water, and bounce rays flew straight through water to the sky |
 | GI Spread and reach (a button that cycles Off / Low / Medium / High: Russian roulette and the indirect ray spread angle; replaces the earlier on/off "Better GI") | Installed, **untested in game** as a four-level button (the Russian roulette off + spread 0.02 combination it replaces was confirmed) |
 | Second, over-refracted set of shadows on sand, sandstone, snow (subsurface materials) seen through water | **Confirmed fixed in game** (item 11 below) |
@@ -101,6 +102,13 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
     sample is also written into the ReSTIR GI buffer, but with the RAW emissive radiance, and ReSTIR GI's final shading applies it with a visibility test whose ray mask has no
     translucent bit. Light redistributed that way therefore arrived white. The patch multiplies the stored radiance by the shadow ray's attenuation, so the cache stays on
     (no extra noise or cost) and no menu switch is needed.
+13. **Violet/blue GI and horizon, red tints, distant blocks glowing** (Texture blend/horizon fix: `runtime-patch/x86_mipcap.py`, `--mip-cap 5`, plus `mod-patch/HookTexture.java`).
+    The mod copies Minecraft's whole block atlas into 4096x4096 textures (colour, glow, normal, roughness and others), and the runtime gives each one a full mip chain by
+    averaging the whole image, regardless of where one block texture ends and the next begins. Wide ray cones (indirect light with an indirect ray spread angle above 0, and
+    distant terrain seen at a grazing angle) read the coarse levels, where neighbouring textures are blended: resource-pack normal maps stitched next to the blocks make
+    the light and the horizon violet, warm neighbours make it red, and lamp, lava and fire glow leaks onto blocks such as quartz. A small patch of the runtime's texture
+    creation (48 bytes, same size) caps the chain at 5 levels for textures the mod marks; at those levels every block texture is still only its own colour. The mod marks
+    the large atlas textures (not height maps) while the master switch and the menu setting are on, so it can be toggled; the setting reloads the resources when changed.
 
 ## The companion mod and the settings menu
 
@@ -117,6 +125,7 @@ The patched DLL reads two Remix options as live channels, so the companion mod c
 | Glass Layer Gap | separates touching glass/water faces (on by default) |
 | Water Blue | blue transmittance of water; **applies after a resource reload or restart** (25-150%) |
 | Sun Size | apparent size of sun and moon (100-2000%, default 100 = shipped); larger = softer shadow edges |
+| Texture blend/horizon fix | stops neighbouring block textures from smearing into each other (off-colour horizon and indirect light); on by default with the master switch; changing it reloads the resources |
 | Glass Layer Gap, Water Surface Underside, Water Off Glass | geometry switches (Layer Gap and Water Off Glass are on by default, Underside is off) |
 | Hotkeys + four key buttons | click a button, press a key (Delete clears); master switch defaults to Numpad 1, debug markers Numpad 2 |
 
@@ -178,6 +187,12 @@ Put the original `d3d9.dll` and the original renderer jar back, remove the compa
 * Glass Block Depth and Water Blue cannot be live: they change materials the mod builds once.
 * Only the builds above are supported. A new NVIDIA release needs its jar and runtime md5 added (the shader modules may or may not have changed; see `docs/TECHNICAL.md`).
 * The right long-term fix is in the runtime source; this should become an upstream issue or PR once the runtime branch is public.
+
+## Credits
+
+* [kazumasa200](https://github.com/kazumasa200) found the cause behind the violet indirect light and horizon: the resource pack's normal and specular maps are stitched
+  into the block atlas next to the block textures and blend into them at coarse mip levels. Their atlas-filter resource pack pointed straight at it, and the Texture
+  blend/horizon fix (item 13) grew out of that finding.
 
 Developed with Claude Code. Investigation details, derivations and gotchas: [docs/TECHNICAL.md](docs/TECHNICAL.md).
 Licence: Apache-2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE).

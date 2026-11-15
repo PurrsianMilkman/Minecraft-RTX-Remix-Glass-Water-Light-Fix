@@ -59,6 +59,7 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static volatile boolean waterUnderside = false;
     private static volatile boolean waterNudge = true;
     private static volatile boolean glassGap = true;
+    private static volatile boolean textureBlendFix = true;
     /** "GI Spread and reach": 0 Off, 1 Low, 2 Medium (default), 3 High (see writeOptions). */
     private static volatile int giReach = 2;
     private static volatile int glassDepthPercent = 100;
@@ -242,6 +243,43 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         }
     }
 
+    /**
+     * Texture blend/horizon fix (with the master switch on): the patched runtime caps the mip chain of the block atlases so distant
+     * terrain and indirect light no longer blend neighbouring textures. The mark is set when a texture is created, so a change
+     * reloads the resources (textures are rebuilt) instead of applying live.
+     */
+    public static boolean isTextureBlendFix() {
+        return textureBlendFix;
+    }
+
+    public static void setTextureBlendFix(boolean on) {
+        if (on == textureBlendFix) {
+            return;
+        }
+        textureBlendFix = on;
+        applyTextureBlendFix();
+        if (clientInitialized) {
+            try {
+                // only in a world (not while the game is still loading or saved settings are being applied); otherwise the next
+                // resource load (start, F3+T) picks it up
+                class_310 mc = class_310.method_1551();
+                if (mc != null && mc.field_1687 != null) {
+                    mc.method_1521();   // MinecraftClient.reloadResources()
+                }
+            } catch (Throwable t) {
+                System.err.println("[translucent-fix] resource reload for the texture blend fix failed: " + t);
+            }
+        }
+    }
+
+    private static void applyTextureBlendFix() {
+        try {
+            game("com.nvidia.rtxremix.minecraft.terrain.capture.GlassContactFaces").getField("textureBlendFix").setBoolean(null, textureBlendFix);
+        } catch (Throwable t) {
+            // renderer jar without the helper: nothing to apply
+        }
+    }
+
     /** Sun and moon apparent size in percent of the shipped size (100 = shipped); bigger = softer shadow edges. */
     public static int getSunSize() {
         return sunSizePercent;
@@ -298,6 +336,7 @@ public final class TranslucentFixToggle implements ClientModInitializer {
         applySunSize();
         applyGlassDepth();
         applyWaterBlue();
+        applyTextureBlendFix();
         toggleKey = KeyBindingHelper.registerKeyBinding(
                 new class_304("key.translucentfix.toggle", 321, "key.categories.misc"));
         diagKey = KeyBindingHelper.registerKeyBinding(

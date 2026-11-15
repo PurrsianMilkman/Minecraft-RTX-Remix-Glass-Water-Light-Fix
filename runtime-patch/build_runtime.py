@@ -322,6 +322,9 @@ def main():
                     help='with --live-flag: water seen in reflections/bounce light is tinted half as hard per surface (see water_reflect_patch.py)')
     ap.add_argument('--sss-psr', action='store_true',
                     help='with --live-flag: no second, over-refracted shadow set on subsurface materials (sand) seen through water (see sss_psr_patch.py)')
+    ap.add_argument('--mip-cap', type=int, default=0, metavar='N',
+                    help='texture blend/horizon fix: cap the mip chain of API memory textures the mod marks (large atlases) at N '
+                         'levels (x86 patch, see x86_mipcap.py; 5 keeps every 16-px-aligned sprite pure; 0 = off)')
     ap.add_argument('--nee-reservoir', action='store_true',
                     help='with --live-flag: emissive NEE samples stored into ReSTIR GI keep the tint of the glass and water they crossed (see nee_reservoir_patch.py)')
     ap.add_argument('--no-composite', action='store_true', help='skip the sky-fade fix')
@@ -392,6 +395,12 @@ def main():
             off, size, out = patch_composite(tools, work, data, a.live_flag)
             data[off:off + size] = out
             print('composite sky fade: patched')
+        if a.mip_cap:
+            sys.path.insert(0, HERE)
+            import x86_mipcap
+            info = x86_mipcap.patch(data, a.mip_cap)
+            print('texture blend/horizon fix: mip chain of marked textures capped at %d levels (x86, file offset 0x%x, emulation %s)'
+                  % (info['levels'], info['offset'], 'passed' if info['emulated'] else 'skipped'))
         open(a.out, 'wb').write(data)
         print('wrote', a.out, 'md5', hashlib.md5(data).hexdigest())
     finally:

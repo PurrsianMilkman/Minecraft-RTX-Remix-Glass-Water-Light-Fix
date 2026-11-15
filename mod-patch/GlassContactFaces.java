@@ -65,6 +65,35 @@ public final class GlassContactFaces {
     /** Water blue transmittance scale in percent (100 = shipped 0.89). Read when the water materials are built. */
     public static volatile int waterBluePercent = 100;
 
+    /**
+     * Texture blend/horizon fix (with the master switch on). The runtime builds a full mip chain over the whole block atlas, so
+     * coarse levels (wide GI ray cones, distant terrain) blend unrelated sprites: violet from stitched LabPBR normal maps, red from
+     * warm neighbours, glow leaking into the emissive atlas. The patched runtime (runtime-patch/x86_mipcap.py) caps the chain at 5
+     * levels for textures whose hash carries MIP_MARK in its low 16 bits; texHash sets that mark. Read when the textures are created,
+     * so a change applies after a resource reload. (Cause found by kazumasa200.)
+     */
+    public static volatile boolean textureBlendFix = true;
+
+    /** Low 16 bits of a marked texture hash; must match MARK in runtime-patch/x86_mipcap.py. */
+    public static final long MIP_MARK = 0xB13DL;
+
+    /** Purpose value of a height map (TexturePurpose HEIGHTMAP): its mip chain drives parallax and stays full. */
+    private static final int PURPOSE_HEIGHTMAP = 5;
+
+    /**
+     * RemixTexture.doCreate(api, hash): the hash handed to the runtime. Large atlas-sized textures (2048 px or more, not height maps)
+     * get MIP_MARK in the low 16 bits while the fix is on; every other hash is kept, except that a random hash which happens to
+     * carry the mark is changed by one bit, so only marked textures are ever capped. The hash stays unique (48 random bits) and the
+     * mod refers to the texture by the handle the runtime returns, not by this value.
+     */
+    public static long texHash(long hash, int width, int height, int purpose) {
+        boolean mark = enabled && textureBlendFix && Math.max(width, height) >= 2048 && purpose != PURPOSE_HEIGHTMAP;
+        if (mark) {
+            return (hash & ~0xFFFFL) | MIP_MARK;
+        }
+        return (hash & 0xFFFFL) == MIP_MARK ? hash ^ 1L : hash;
+    }
+
     private GlassContactFaces() {}
 
     /** Blue transmittance of water (shipped 0.89): b^(100/percent), so less than 100 removes blue (greener), more adds it. */

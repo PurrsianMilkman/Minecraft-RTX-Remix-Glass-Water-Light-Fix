@@ -28,6 +28,8 @@
   "rtxremix.setting.light.glassDepth.tip": "How deeply a glass block tints. 100 = as shipped. Reload resources (F3+T) or restart to apply.",
   "rtxremix.setting.light.waterBlue": "Water Blue",
   "rtxremix.setting.light.waterBlue.tip": "How much blue water lets through. 100 = as shipped. Reload resources (F3+T) or restart to apply.",
+  "rtxremix.setting.light.textureBlendFix": "Texture blend/horizon fix",
+  "rtxremix.setting.light.textureBlendFix.tip": "Stops neighbouring block textures from smearing into each other. Fixes off color horizon and indirect lighting.",
   "rtxremix.setting.light.glassGap": "Glass Layer Gap",
   "rtxremix.setting.light.glassGap.tip": "Separates touching glass and water faces. Fixes black sky, missing middle glass and flicker.",
   "rtxremix.setting.light.waterUnderside": "Water Surface Underside",

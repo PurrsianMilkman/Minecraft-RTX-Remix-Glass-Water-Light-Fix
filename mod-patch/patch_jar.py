@@ -134,7 +134,17 @@ def main():
         run([javac, '--release', '21', '-cp', asm_cp, '-d', tool_dir, os.path.join(HERE, 'HookMeasure.java')])
         btm_out = os.path.join(work, 'BlockTextureManager.final.class')
         print(run([java, '-cp', os.pathsep.join([tool_dir, asm_cp]), 'HookMeasure', btm_in, btm_out]).strip())
+        # texture blend/horizon fix: RemixTexture.doCreate hands GlassContactFaces.texHash(...) to the runtime (marks large atlases)
+        tex_cls = 'com/nvidia/rtxremix/minecraft/asset/RemixTexture.class'
+        with zipfile.ZipFile(a.jar) as z:
+            tex_orig = z.read(tex_cls)
+        tex_in = os.path.join(work, 'RemixTexture.class')
+        open(tex_in, 'wb').write(tex_orig)
+        run([javac, '--release', '21', '-cp', asm_cp, '-d', tool_dir, os.path.join(HERE, 'HookTexture.java')])
+        tex_out = os.path.join(work, 'RemixTexture.final.class')
+        print(run([java, '-cp', os.pathsep.join([tool_dir, asm_cp]), 'HookTexture', tex_in, tex_out]).strip())
         replace = {EMITTER: emitter_bytes,
+                   tex_cls: open(tex_out, 'rb').read(),
                    btm_cls: open(btm_out, 'rb').read(),
                    light_cls: open(light_out, 'rb').read(),
                    SETTINGS + '/RtxSettingsFactory.class': open(factory_out, 'rb').read(),

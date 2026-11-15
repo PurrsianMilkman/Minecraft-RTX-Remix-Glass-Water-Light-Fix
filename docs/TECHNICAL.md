@@ -245,3 +245,29 @@ Every patch here was built and mostly tested with `rtx.integrateIndirectMode = 1
 spatially hashed radiance cache whose paths stop early by looking up stored radiance), which is what a profile without that line gets. ReSTIR GI is a **preference, not a requirement**: the mod does not write the mode, and the
 glass, water and shadow fixes work in both. (The black reflection of water seen through glass that appeared after a settings reset was caused by the missing bounce limit, not by the mode: the mod writes `rtx.pathMaxBounces = 8` while the master switch
 is on and Remix's 4 when it is off; a value pinned in `user.conf` outranks it.)
+
+## Texture blend/horizon fix (2026-11)
+
+Cause found by [kazumasa200](https://github.com/kazumasa200) (LabPBR `_n`/`_s` maps stitched into the block atlas, blended in at coarse mips; reproduced on unmodded 0.1.1).
+
+* **Where the blending happens.** `BlockTextureManager.captureAtlas`/`stitchAtlasRGBA` copies every sprite Minecraft stitched (the Materials pack's and the mod's own
+  `_n`/`_s`/`_sss` maps included) into one 4096x4096 RGBA8 albedo buffer; `buildAtlasMaterials` builds normal, height, roughness, metallic, emissive and SSS atlases of the
+  same size from the `_n`/`_s`/`_sss` FILES at the albedo sprite positions (nothing reads those maps back from the atlas). All go through `createTextureFromMemory`
+  (level 0 only; the Java API has no mip field). The runtime's API memory texture creation (RVA 0x20ee70 in the 0.1.1 `d3d9.dll`) computes
+  `mipLevels = 1 + floor(log2(max(w,h)))` (13 for 4096) at RVA 0x20eeea and fills the chain with `DxvkContext::generateMipmaps`, a whole-image 2x2 downsample that
+  knows nothing about sprites.
+* **Who reads coarse levels.** Material textures are sampled with ray-cone gradients. Indirect rays widen the cone by `rtx.indirectRaySpreadAngleFactor` (about 1-1.3 rad
+  times the factor for a diffuse bounce), so at 0.05 a 2-10 m bounce on 64 px textures reads mip 3-5; distant terrain at grazing angles reads mip 6-12 on primary rays
+  whatever the GI setting. The emissive atlas is sampled with the same gradients and used at emissive intensity 100 on every terrain material, and the NEE cache then turns
+  such hits into light sources, which is why leaked lamp/lava colour shows as a glow on quartz.
+* **Measured in an atlas replay.** Whole-atlas mean with the PBR maps (105,90,138) (violet); without them about (121,110,93) (warm, which is the red the atlas filter alone
+  left). Every sprite is padded to a multiple of 16 px on a 16 px boundary, so levels 0..4 stay inside each sprite: with the chain capped at 5 levels no non-emissive block
+  picks up any emission (mip 6: 81-151 do, mip 8: 250-450 do) and 99.9 % of sprites keep exactly their own colour.
+* **The patch.** `x86_mipcap.py` rewrites the 48-byte level loop (file offset 0x20e2ea, same size, original bytes checked, the result emulated with unicorn when available)
+  so the count is capped at N only when the low 16 bits of the texture hash (`[rsi]`, also the key of the runtime's texture map) equal `0xB13D`. `HookTexture.java` makes
+  `RemixTexture.doCreate` pass `GlassContactFaces.texHash(hash, width, height, purpose)`: textures of 2048 px or more that are not height maps (their mips drive
+  parallax) get the marker while the master switch and the setting are on; any other hash that happens to end in `0xB13D` is changed by one bit. Hashes come from
+  `ThreadLocalRandom`, so 48 random bits remain, and the mod refers to textures by the handle the runtime returns. The level count is fixed when a texture is created,
+  so the setting triggers a resource reload (in a world) and the master switch takes effect at the next reload.
+* **Rejected alternatives.** `rtx.nativeMipBias` shifts the level instead of capping it; filling the empty atlas space barely changes the colour; the atlas filter alone
+  removes only the violet ingredient; a sprite-aware SPIR-V gradient clamp would touch about 380 modules with little size slack.

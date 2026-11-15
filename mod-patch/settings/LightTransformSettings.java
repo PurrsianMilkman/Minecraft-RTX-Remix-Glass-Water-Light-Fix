@@ -46,6 +46,9 @@ public final class LightTransformSettings {
                 "rtxremix.setting.light.waterBlue", "rtxremix.setting.light.waterBlue.tip",
                 25, 150, 100, () -> getInt(toggle, "getWaterBlue", 100), v -> setInt(toggle, "setWaterBlue", v))
                 .withStep(5));
+        list.add(RtxSetting.ofBool("light.textureBlendFix", SettingGroup.LIGHT_TRANSFORM,
+                "rtxremix.setting.light.textureBlendFix", "rtxremix.setting.light.textureBlendFix.tip",
+                true, () -> get(toggle, "isTextureBlendFix", true), v -> set(toggle, "setTextureBlendFix", v)));
         list.add(RtxSetting.ofBool("light.glassGap", SettingGroup.LIGHT_TRANSFORM,
                 "rtxremix.setting.light.glassGap", "rtxremix.setting.light.glassGap.tip",
                 true, () -> get(toggle, "isGlassGap", true), v -> set(toggle, "setGlassGap", v)));
