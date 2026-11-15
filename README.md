@@ -35,7 +35,7 @@ To install and use:
 | Glass Block Depth, Water Blue sliders | **Confirmed in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | **Confirmed in game** |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
-| Water Off Glass applied at start without toggling, and lava enclosed in glass no longer flickering | Installed, **untested in game** (the setting never reached the mesh builder at start, which left water black until toggled off and on) |
+| Water Off Glass applied at start without toggling, and lava enclosed in glass no longer flickering | **Confirmed in game** (the setting never reached the mesh builder at start, which left water black until toggled off and on) |
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |
 | Violet/blue indirect light (worst with gray glass) and violet horizon, red tints, distant blocks such as quartz glowing orange | **Confirmed fixed in game** by the Texture blend/horizon fix (item 13 below). Do not pin `rtx.viewDistance.noiseScale` in user.conf: it silently disables the Master Switch, so never save from the Alt+X menu |
 | Texture blend/horizon fix as a menu toggle (the hash marker that switches it per texture) | **Confirmed in game** (on, off and on again; the setting reloads the resources) |
