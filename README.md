@@ -35,6 +35,7 @@ To install and use:
 | Glass Block Depth, Water Blue sliders | **Confirmed in game**; apply when the materials are rebuilt (resource reload or restart) |
 | Hotkey assignment buttons in the settings menu | **Confirmed in game** |
 | Unbind buttons next to each hotkey, RTX On/Off hotkey, GI Spread and reach default Low | **Confirmed in game** |
+| Light lingering for many seconds in SHaRC mode after its source is removed (e.g. a closed quartz box with a broken sea lantern) | Installed, **untested in game**: with the master switch on the mod sets `rtx.spatiallyHashedRadianceCache.maxNumFramesToAccumulate` to Remix's default 10 (NVIDIA's Minecraft config uses 1000) |
 | Water Surface Underside, Water Off Glass (test switches) | Installed, optional. Underside is **off by default**: the reversed copy of the water top stays dropped while the master switch is on |
 | Water Off Glass applied at start without toggling, and lava enclosed in glass no longer flickering | **Confirmed in game** (the setting never reached the mesh builder at start, which left water black until toggled off and on) |
 | White light through coloured glass, and untinted light through water, from lamps and sea lanterns (the NEE cache feeding ReSTIR GI) | **Confirmed fixed in game** (item 12 below) |

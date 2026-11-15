@@ -274,3 +274,10 @@ Cause found by [kazumasa200](https://github.com/kazumasa200) (LabPBR `_n`/`_s` m
   so the setting triggers a resource reload (in a world) and the master switch takes effect at the next reload.
 * **Rejected alternatives.** `rtx.nativeMipBias` shifts the level instead of capping it; filling the empty atlas space barely changes the colour; the atlas filter alone
   removes only the violet ingredient; a sprite-aware SPIR-V gradient clamp would touch about 380 modules with little size slack.
+
+## SHaRC history length (2026-11)
+
+`rtx.spatiallyHashedRadianceCache.maxNumFramesToAccumulate` is the number of frames each SHaRC cell averages. Remix's default is 10; NVIDIA's Minecraft
+`rtx.conf` sets 1000 (and `staleFrameNumber` 1024) to reduce shimmer on leaves. With 1000 frames cached light fades over many seconds: in a closed, bright
+enclosure (quartz reflects about 83 %) the cells mostly receive light from each other, so after the light source is removed the box stays lit. With the
+master switch on the mod writes 10; with it off, NVIDIA's 1000. ReSTIR GI does not use this cache.

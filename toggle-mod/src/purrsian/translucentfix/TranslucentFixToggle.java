@@ -32,6 +32,11 @@ public final class TranslucentFixToggle implements ClientModInitializer {
     private static final String TRANSMISSION_APPROX = "rtx.enableTransmissionApproximationInIndirectRays";
     /** Water is a real surface for bounce rays (water_reflect patch): a path through a water column refracts in, may reflect inside and refracts out, so it needs more bounces than Remix's default 4 or the reflection ends black. */
     private static final String PATH_MAX_BOUNCES = "rtx.pathMaxBounces";
+    /**
+     * SHaRC history length. Remix's default is 10 frames; NVIDIA's Minecraft rtx.conf raises it to 1000 (against leaf shimmer), which makes
+     * cached light linger for many seconds after a light goes away (a closed quartz box with a broken sea lantern stays lit).
+     */
+    private static final String SHARC_FRAMES = "rtx.spatiallyHashedRadianceCache.maxNumFramesToAccumulate";
     /** GI Spread and reach: Russian roulette ends paths early, which makes indirect light grow stronger the closer you get to a surface. */
     private static final String RUSSIAN_ROULETTE = "rtx.enableRussianRoulette";
     /** GI Spread and reach: how much a bounce ray's cone widens after an indirect BRDF sample (Remix default 0.05; 0.02 gives much cleaner GI). */
@@ -522,7 +527,9 @@ public final class TranslucentFixToggle implements ClientModInitializer {
             int g = (Integer) m.invoke(null, INDIRECT_SPREAD, level == 3 ? "0.0" : level == 2 ? "0.025" : "0.05");
             // 8 bounces while the master switch is on (water and glass refraction chains), Remix's own 4 when it is off
             int h = (Integer) m.invoke(null, PATH_MAX_BOUNCES, on ? "8" : "4");
-            boolean ok = a == 0 && b == 0 && c == 0 && e == 0 && f == 0 && g == 0 && h == 0;
+            // SHaRC history: Remix's own 10 frames while the master switch is on (light fades with its source), NVIDIA's shipped 1000 when off
+            int i = (Integer) m.invoke(null, SHARC_FRAMES, on ? "10" : "1000");
+            boolean ok = a == 0 && b == 0 && c == 0 && e == 0 && f == 0 && g == 0 && h == 0 && i == 0;
             if (ok) {
                 System.out.println("[translucent-fix] options written: noiseScale " + desiredNoise() + " (runtime now " + readFloat(NOISE_SCALE)
                         + ")");
