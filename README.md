@@ -1,4 +1,4 @@
-# RTX Remix for Minecraft: coloured light through water and glass
+# Minecraft RTX REMIX Lightfix patch
 
 Fixes and settings for [NVIDIA's RTX Remix for Minecraft](https://github.com/NVIDIAGameWorks/rtx-remix-minecraft) (Fabric, 1.21.1) where
 **water and glass did not colour the light that passes through them**: light from torches, sea lanterns and the sun, and the
