@@ -18,6 +18,8 @@ To install and use:
 4. Put the patched jar file in your mods folder, just like other mods.
 5. Remove the original jar file if it is still there.
 
+Your support is greatly appreciated. Nothing is paywalled: https://www.patreon.com/cw/Purrsian
+
 ## Status (honest version)
 
 | Item | State |
